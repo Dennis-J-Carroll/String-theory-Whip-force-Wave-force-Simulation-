@@ -1,0 +1,154 @@
+# Wave Simulation Configuration File
+# This file contains all tunable parameters for the simulation
+
+# Simulation settings
+simulation:
+  # Numerical integrator to use
+  # Options: "central_diff", "rk4", "verlet"
+  integrator: "central_diff"
+
+  # Time parameters
+  total_time: 5.0      # Total simulation time
+  dt: 0.01             # Time step
+
+  # Spatial parameters
+  num_points: 500      # Number of spatial discretization points
+
+  # Output settings
+  output_dir: "output"
+  save_interval: 50    # Save every N time steps for visualization
+  generate_animation: true
+  animation_fps: 30
+
+# String/Wave properties
+string:
+  # Basic properties
+  length: 50.0         # Total length of the string
+  tension: 50.0        # Tension in the string (N)
+
+  # Density profile
+  # Options: "uniform", "tapered", "custom"
+  density_type: "uniform"
+
+  # For uniform density
+  density_uniform: 0.01  # kg/m (linear mass density)
+
+  # For tapered density (whip simulation)
+  density_base: 0.02     # Density at the base (thick end)
+  density_tip: 0.002     # Density at the tip (thin end)
+  taper_exponent: 1.0    # How rapidly density decreases (1.0 = linear)
+
+  # Boundary conditions
+  # Options: "fixed", "free", "periodic"
+  boundary_left: "fixed"
+  boundary_right: "fixed"
+
+# Initial conditions
+initial_conditions:
+  # Type of initial disturbance
+  # Options: "gaussian", "sine", "pulse", "multiple_gaussian", "custom"
+  type: "gaussian"
+
+  # Gaussian parameters
+  gaussian:
+    center: 25.0       # Center position
+    width: 5.0         # Standard deviation
+    amplitude: 1.0     # Peak amplitude
+
+  # Sine wave parameters
+  sine:
+    wavelength: 10.0
+    amplitude: 0.5
+    phase: 0.0
+
+  # Pulse parameters
+  pulse:
+    position: 10.0
+    amplitude: 2.0
+    width: 2.0
+
+# Force parameters (Lennard-Jones-like potential)
+forces:
+  # Enable/disable external force term
+  enable_force: true
+
+  # Force constants
+  k1: 1.35e-66         # Repulsive force constant
+  k2: 0.5              # Attractive force constant
+
+  # Physical constants for cosmological context
+  use_cosmological_constants: true
+  critical_density: 8.5e-27     # kg/m^3
+  mass_hydrogen: 1.67e-27       # kg
+  gravitational_constant: 6.67e-11  # N m^2/kg^2
+
+# Visualization settings
+visualization:
+  # Wave evolution plot
+  plot_wave_evolution: true
+  wave_plot_timesteps: 10  # Number of timesteps to overlay
+
+  # Energy plots
+  plot_energy: true
+  energy_plot_types:
+    - "kinetic"
+    - "potential"
+    - "total"
+
+  # Phase space plot
+  plot_phase_space: true
+  phase_space_node: 250  # Which node to track (index)
+
+  # Heatmap (space-time diagram)
+  plot_heatmap: true
+  heatmap_colormap: "viridis"
+
+  # Force and potential function plots
+  plot_force_function: true
+  plot_potential_function: true
+
+  # Figure settings
+  figure_dpi: 150
+  figure_format: "png"  # Options: "png", "pdf", "svg"
+
+# Advanced numerical settings
+numerics:
+  # CFL safety factor (actual CFL = safety_factor * max_allowed)
+  cfl_safety_factor: 0.9
+
+  # Automatic timestep adjustment
+  auto_adjust_dt: false
+
+  # Numerical damping (for stability)
+  artificial_damping: 0.0  # 0 = no damping, 0.01 = 1% damping
+
+  # Precision settings
+  float_precision: "float64"  # Options: "float32", "float64"
+
+  # Performance
+  use_vectorization: true
+  parallel_processing: false
+
+# Validation and testing
+validation:
+  # Check energy conservation
+  check_energy_conservation: true
+  energy_tolerance: 0.05  # Maximum relative energy drift allowed (5%)
+
+  # Check CFL condition
+  enforce_cfl: true
+
+  # Check for numerical instabilities
+  check_for_nan: true
+  check_for_inf: true
+
+  # Maximum displacement threshold (abort if exceeded)
+  max_displacement: 100.0
+
+# Logging
+logging:
+  level: "INFO"  # Options: "DEBUG", "INFO", "WARNING", "ERROR"
+  log_to_file: true
+  log_file: "simulation.log"
+  print_progress: true
+  progress_interval: 10  # Print progress every N% completion
