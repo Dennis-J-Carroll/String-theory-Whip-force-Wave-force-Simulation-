@@ -12,9 +12,9 @@ This project implements a comprehensive numerical simulation of **classical wave
 - **Modified wave equations** with Lennard-Jones-like potentials for wave interactions
 - **Energy conservation** in non-linear wave systems
 
-### ⚠️ Important Clarification: Classical vs. Quantum
+### !! Important Clarification: Classical vs. Quantum
 
-**This is NOT quantum string theory** (the fundamental physics theory proposing 1-dimensional strings as basic constituents of matter). This simulation models **classical continuous strings** (like ropes, cables, or whips) governed by Newtonian mechanics and the classical wave equation.
+**This is NOT quantum string theory** (the fundamental physics theory proposing 1-dimensional strings as basic constituents of matter). This simulation models **classical continuous strings** (like ropes, cables, or whips) governed by Newtonian mechanics and the classical wave equation. This is at the very least the practice of programming an idea with the pure intent to imaginatuvely experiment. 
 
 ## Features
 
@@ -27,18 +27,18 @@ This project implements a comprehensive numerical simulation of **classical wave
 - ✅ Real-time energy conservation monitoring
 
 ### Visualization & Analysis
-- 📊 Wave evolution plots with customizable time steps
-- 📈 Energy conservation plots (Kinetic, Potential, Total)
-- 🌀 Phase space trajectory visualization
-- 🔥 Space-time heatmaps for wave history
-- 🎬 Animated GIF generation
-- 📉 Potential and force function plots
+- Wave evolution plots with customizable time steps
+- Energy conservation plots (Kinetic, Potential, Total)
+- Phase space trajectory visualization
+- Space-time heatmaps for wave history
+- Animated GIF generation
+- Potential and force function plots
 
 ### Software Engineering
-- 🏗️ Object-oriented design with String and Solver classes
-- ⚙️ YAML configuration files for parameter management
-- 🧪 Comprehensive unit tests with pytest
-- 📦 Clean modular structure
+- Object-oriented design with String and Solver classes
+- YAML configuration files for parameter management
+- Comprehensive unit tests with pytest
+- Clean modular structure
 
 ## The Mathematics
 
