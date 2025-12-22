@@ -37,3 +37,20 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Simulation outputs
+output/
+*.gif
+*.png
+*.pdf
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Keep docs folder but ignore generated content
+docs/*.gif
+docs/*.png
+docs/*.pdf

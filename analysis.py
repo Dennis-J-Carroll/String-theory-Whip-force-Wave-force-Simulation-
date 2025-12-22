@@ -1,388 +1,383 @@
 """
-Analysis module for wave simulations.
+Analysis tools for wave simulations.
 
-This module provides tools for:
-- Energy calculations (kinetic, potential, total)
-- Phase space analysis
-- Statistical analysis of wave properties
-- Conservation checks
+Provides functions for energy tracking, phase space analysis,
+and physical validation of simulation results.
 """
-
 import numpy as np
-from typing import List, Tuple, Dict
-from solver import potential_function
+import matplotlib.pyplot as plt
+from typing import List, Tuple, Optional
+import solver
 
 
-def calculate_kinetic_energy(u_history: List[np.ndarray],
-                             u_prev_history: List[np.ndarray],
-                             dt: float,
-                             dx: float) -> np.ndarray:
+def analyze_energy_conservation(
+    time_history: List[float],
+    energy_history: List[Tuple[float, float, float]],
+    tolerance: float = 0.05,
+    plot: bool = True,
+    save_path: Optional[str] = None,
+) -> dict:
     """
-    Calculate kinetic energy at each time step.
-
-    The kinetic energy density is (1/2) * (∂u/∂t)².
-    We approximate the time derivative using finite differences.
+    Analyze energy conservation in the simulation.
 
     Args:
-        u_history: List of displacement arrays
-        u_prev_history: List of previous displacement arrays
-        dt: Time step
-        dx: Spatial step
+        time_history: List of time values
+        energy_history: List of (KE, PE, Total) tuples
+        tolerance: Maximum allowed relative energy drift
+        plot: Whether to generate plot
+        save_path: Path to save the plot
 
     Returns:
-        Array of kinetic energy values at each time step
+        Dictionary with energy statistics
     """
-    kinetic_energy = []
+    if len(energy_history) == 0:
+        raise ValueError("No energy history provided")
 
-    for i in range(len(u_history)):
-        if i == 0:
-            # For first step, use zero velocity
-            velocity = np.zeros_like(u_history[0])
-        else:
-            # Approximate velocity using finite differences
-            velocity = (u_history[i] - u_history[i-1]) / dt
+    # Extract energy components
+    ke = np.array([e[0] for e in energy_history])
+    pe = np.array([e[1] for e in energy_history])
+    total = np.array([e[2] for e in energy_history])
+    time = np.array(time_history[: len(energy_history)])
 
-        # Kinetic energy: integrate (1/2) * v² over space
-        ke = 0.5 * np.sum(velocity**2) * dx
-        kinetic_energy.append(ke)
+    # Calculate statistics
+    initial_energy = total[0]
+    final_energy = total[-1]
+    energy_drift = final_energy - initial_energy
+    relative_drift = abs(energy_drift / initial_energy) if initial_energy != 0 else float("inf")
 
-    return np.array(kinetic_energy)
+    max_energy = np.max(total)
+    min_energy = np.min(total)
+    energy_range = max_energy - min_energy
+    relative_range = energy_range / initial_energy if initial_energy != 0 else float("inf")
 
+    is_conserved = relative_drift < tolerance
 
-def calculate_potential_energy(u_history: List[np.ndarray],
-                               K1: float,
-                               K2: float,
-                               dx: float,
-                               u_offset: float = 0.1) -> np.ndarray:
-    """
-    Calculate potential energy at each time step.
-
-    Args:
-        u_history: List of displacement arrays
-        K1: Repulsive force constant
-        K2: Attractive force constant
-        dx: Spatial step
-        u_offset: Small offset to avoid division by zero
-
-    Returns:
-        Array of potential energy values at each time step
-    """
-    potential_energy = []
-
-    for u in u_history:
-        # Add small offset to avoid singularities
-        u_safe = np.abs(u) + u_offset
-
-        # Calculate potential at each point
-        V = potential_function(u_safe, K1, K2)
-
-        # Integrate over space
-        pe = np.sum(V) * dx
-        potential_energy.append(pe)
-
-    return np.array(potential_energy)
-
-
-def calculate_total_energy(kinetic_energy: np.ndarray,
-                          potential_energy: np.ndarray) -> np.ndarray:
-    """
-    Calculate total energy (kinetic + potential).
-
-    Args:
-        kinetic_energy: Array of kinetic energy values
-        potential_energy: Array of potential energy values
-
-    Returns:
-        Array of total energy values
-    """
-    return kinetic_energy + potential_energy
-
-
-def check_energy_conservation(total_energy: np.ndarray,
-                              tolerance: float = 0.05) -> Dict[str, float]:
-    """
-    Check if energy is conserved within a given tolerance.
-
-    Args:
-        total_energy: Array of total energy values
-        tolerance: Acceptable relative change in energy (default 5%)
-
-    Returns:
-        Dictionary with conservation statistics
-    """
-    initial_energy = total_energy[0]
-    final_energy = total_energy[-1]
-    max_energy = np.max(total_energy)
-    min_energy = np.min(total_energy)
-
-    # Calculate relative changes
-    relative_change = abs(final_energy - initial_energy) / abs(initial_energy) if initial_energy != 0 else 0
-    max_deviation = max(
-        abs(max_energy - initial_energy) / abs(initial_energy) if initial_energy != 0 else 0,
-        abs(min_energy - initial_energy) / abs(initial_energy) if initial_energy != 0 else 0
-    )
-
-    is_conserved = relative_change < tolerance
-
-    return {
-        'initial_energy': initial_energy,
-        'final_energy': final_energy,
-        'relative_change': relative_change,
-        'max_deviation': max_deviation,
-        'is_conserved': is_conserved,
-        'tolerance': tolerance
-    }
-
-
-def calculate_phase_space_trajectory(u_history: List[np.ndarray],
-                                     dt: float,
-                                     spatial_index: int = None) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calculate phase space trajectory (position vs velocity) for a specific spatial point.
-
-    Args:
-        u_history: List of displacement arrays
-        dt: Time step
-        spatial_index: Index of spatial point to analyze (default: center point)
-
-    Returns:
-        Tuple of (position, velocity) arrays
-    """
-    if spatial_index is None:
-        spatial_index = len(u_history[0]) // 2
-
-    # Extract position at the chosen spatial point over time
-    position = np.array([u[spatial_index] for u in u_history])
-
-    # Calculate velocity using finite differences
-    velocity = np.gradient(position, dt)
-
-    return position, velocity
-
-
-def calculate_wave_statistics(u_history: List[np.ndarray],
-                             time_points: np.ndarray) -> Dict[str, np.ndarray]:
-    """
-    Calculate statistical properties of the wave over time.
-
-    Args:
-        u_history: List of displacement arrays
-        time_points: Array of time values
-
-    Returns:
-        Dictionary with various statistical measures
-    """
     stats = {
-        'mean': [],
-        'std': [],
-        'max': [],
-        'min': [],
-        'energy_density': []
+        "initial_energy": initial_energy,
+        "final_energy": final_energy,
+        "energy_drift": energy_drift,
+        "relative_drift": relative_drift,
+        "max_energy": max_energy,
+        "min_energy": min_energy,
+        "energy_range": energy_range,
+        "relative_range": relative_range,
+        "is_conserved": is_conserved,
+        "tolerance": tolerance,
     }
 
-    for u in u_history:
-        stats['mean'].append(np.mean(u))
-        stats['std'].append(np.std(u))
-        stats['max'].append(np.max(u))
-        stats['min'].append(np.min(u))
-        stats['energy_density'].append(np.sum(u**2))
+    if plot:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
 
-    # Convert to numpy arrays
-    for key in stats:
-        stats[key] = np.array(stats[key])
+        # Plot 1: Energy components over time
+        ax1.plot(time, ke, label="Kinetic Energy", linewidth=2)
+        ax1.plot(time, pe, label="Potential Energy", linewidth=2)
+        ax1.plot(time, total, label="Total Energy", linewidth=2, linestyle="--", color="black")
+        ax1.set_xlabel("Time")
+        ax1.set_ylabel("Energy")
+        ax1.set_title("Energy Evolution")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Plot 2: Relative energy drift
+        relative_total = (total - initial_energy) / initial_energy * 100
+        ax2.plot(time, relative_total, linewidth=2, color="red")
+        ax2.axhline(y=tolerance * 100, color="orange", linestyle="--", label=f"Tolerance ({tolerance*100:.1f}%)")
+        ax2.axhline(y=-tolerance * 100, color="orange", linestyle="--")
+        ax2.set_xlabel("Time")
+        ax2.set_ylabel("Relative Energy Drift (%)")
+        ax2.set_title(f"Energy Conservation (Drift: {relative_drift*100:.3f}%)")
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Energy plot saved to {save_path}")
+
+        plt.show()
 
     return stats
 
 
-def find_wave_peaks(u: np.ndarray, x: np.ndarray,
-                   threshold: float = 0.1) -> Tuple[np.ndarray, np.ndarray]:
+def plot_phase_space(
+    displacement_history: List[np.ndarray],
+    velocity_history: List[np.ndarray],
+    node_index: int = None,
+    num_nodes: int = 3,
+    save_path: Optional[str] = None,
+) -> None:
     """
-    Find peaks in the wave displacement.
+    Plot phase space trajectories (displacement vs velocity).
 
     Args:
-        u: Displacement array
-        x: Spatial grid
-        threshold: Minimum height for peak detection
-
-    Returns:
-        Tuple of (peak_positions, peak_heights)
+        displacement_history: List of displacement arrays
+        velocity_history: List of velocity arrays
+        node_index: Specific node to plot (if None, plots multiple nodes)
+        num_nodes: Number of nodes to plot if node_index is None
+        save_path: Path to save the plot
     """
-    # Find local maxima
-    peaks = []
-    positions = []
+    if len(displacement_history) == 0 or len(velocity_history) == 0:
+        raise ValueError("Empty history provided")
 
-    for i in range(1, len(u) - 1):
-        if u[i] > u[i-1] and u[i] > u[i+1] and u[i] > threshold:
-            peaks.append(u[i])
-            positions.append(x[i])
+    fig, ax = plt.subplots(figsize=(8, 8))
 
-    return np.array(positions), np.array(peaks)
+    if node_index is not None:
+        # Plot single node
+        u = [disp[node_index] for disp in displacement_history]
+        v = [vel[node_index] for vel in velocity_history]
+        ax.plot(u, v, linewidth=1.5, alpha=0.8)
+        ax.scatter(u[0], v[0], c="green", s=100, marker="o", label="Start", zorder=5)
+        ax.scatter(u[-1], v[-1], c="red", s=100, marker="x", label="End", zorder=5)
+        ax.set_title(f"Phase Space Trajectory - Node {node_index}")
+    else:
+        # Plot multiple nodes
+        num_points = len(displacement_history[0])
+        indices = np.linspace(0, num_points - 1, num_nodes, dtype=int)
+
+        for idx in indices:
+            u = [disp[idx] for disp in displacement_history]
+            v = [vel[idx] for vel in velocity_history]
+            ax.plot(u, v, linewidth=1.5, alpha=0.7, label=f"Node {idx}")
+
+        ax.set_title(f"Phase Space Trajectories - {num_nodes} Nodes")
+        ax.legend()
+
+    ax.set_xlabel("Displacement u(x, t)")
+    ax.set_ylabel("Velocity ∂u/∂t")
+    ax.grid(True, alpha=0.3)
+    ax.axhline(y=0, color="k", linewidth=0.5)
+    ax.axvline(x=0, color="k", linewidth=0.5)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Phase space plot saved to {save_path}")
+
+    plt.show()
 
 
-def calculate_wave_velocity(u_history: List[np.ndarray],
-                           x: np.ndarray,
-                           time_points: np.ndarray,
-                           threshold: float = 0.5) -> float:
+def plot_spacetime_heatmap(
+    displacement_history: List[np.ndarray],
+    x: np.ndarray,
+    time_history: List[float],
+    colormap: str = "RdBu_r",
+    save_path: Optional[str] = None,
+) -> None:
     """
-    Estimate wave propagation velocity by tracking peak movement.
+    Create a space-time heatmap showing wave evolution.
 
     Args:
-        u_history: List of displacement arrays
-        x: Spatial grid
-        time_points: Time values
-        threshold: Threshold for peak detection
-
-    Returns:
-        Estimated wave velocity
+        displacement_history: List of displacement arrays
+        x: Spatial grid points
+        time_history: List of time values
+        colormap: Matplotlib colormap name
+        save_path: Path to save the plot
     """
-    peak_positions = []
-    peak_times = []
+    if len(displacement_history) == 0:
+        raise ValueError("Empty displacement history")
 
-    for i, (u, t) in enumerate(zip(u_history, time_points)):
-        positions, heights = find_wave_peaks(u, x, threshold)
-        if len(positions) > 0:
-            # Use the highest peak
-            max_idx = np.argmax(heights)
-            peak_positions.append(positions[max_idx])
-            peak_times.append(t)
+    # Create 2D array: time x space
+    data = np.array(displacement_history)
 
-    if len(peak_positions) < 2:
-        return 0.0
+    fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Fit a line to peak positions vs time
-    peak_positions = np.array(peak_positions)
-    peak_times = np.array(peak_times)
+    # Create heatmap
+    im = ax.imshow(
+        data,
+        aspect="auto",
+        origin="lower",
+        extent=[x[0], x[-1], time_history[0], time_history[-1]],
+        cmap=colormap,
+        interpolation="bilinear",
+    )
 
-    # Simple linear regression
-    velocity = np.polyfit(peak_times, peak_positions, 1)[0]
+    ax.set_xlabel("Position (x)")
+    ax.set_ylabel("Time (t)")
+    ax.set_title("Space-Time Evolution of Wave Displacement")
 
-    return velocity
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Displacement u(x, t)")
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Heatmap saved to {save_path}")
+
+    plt.show()
 
 
-def calculate_fourier_spectrum(u: np.ndarray, dx: float) -> Tuple[np.ndarray, np.ndarray]:
+def plot_tip_velocity(
+    time_history: List[float],
+    velocity_history: List[np.ndarray],
+    sound_speed: float = 343.0,
+    save_path: Optional[str] = None,
+) -> dict:
     """
-    Calculate the spatial Fourier spectrum of the wave.
+    Plot the velocity at the tip of the string (for whip simulations).
 
     Args:
-        u: Displacement array
-        dx: Spatial step
+        time_history: List of time values
+        velocity_history: List of velocity arrays
+        sound_speed: Speed of sound for reference (m/s)
+        save_path: Path to save the plot
 
     Returns:
-        Tuple of (wavenumbers, power_spectrum)
+        Dictionary with tip velocity statistics
     """
-    # Compute FFT
-    spectrum = np.fft.fft(u)
-    power = np.abs(spectrum)**2
+    if len(velocity_history) == 0:
+        raise ValueError("Empty velocity history")
 
-    # Compute wavenumbers
-    N = len(u)
-    k = 2 * np.pi * np.fft.fftfreq(N, dx)
+    # Extract tip velocities (last spatial point)
+    tip_velocities = np.array([v[-1] for v in velocity_history])
+    time = np.array(time_history[: len(velocity_history)])
 
-    # Only return positive frequencies
-    positive_idx = k >= 0
-    k = k[positive_idx]
-    power = power[positive_idx]
+    # Statistics
+    max_tip_velocity = np.max(np.abs(tip_velocities))
+    max_tip_velocity_time = time[np.argmax(np.abs(tip_velocities))]
+    is_supersonic = max_tip_velocity > sound_speed
 
-    return k, power
-
-
-def analyze_simulation(u_history: List[np.ndarray],
-                      time_points: np.ndarray,
-                      x: np.ndarray,
-                      dt: float,
-                      dx: float,
-                      K1: float,
-                      K2: float) -> Dict:
-    """
-    Perform comprehensive analysis of a wave simulation.
-
-    Args:
-        u_history: List of displacement arrays
-        time_points: Time values
-        x: Spatial grid
-        dt: Time step
-        dx: Spatial step
-        K1: Repulsive force constant
-        K2: Attractive force constant
-
-    Returns:
-        Dictionary containing all analysis results
-    """
-    # Energy calculations
-    u_prev_history = [u_history[0]] + u_history[:-1]
-    kinetic_energy = calculate_kinetic_energy(u_history, u_prev_history, dt, dx)
-    potential_energy = calculate_potential_energy(u_history, K1, K2, dx)
-    total_energy = calculate_total_energy(kinetic_energy, potential_energy)
-
-    # Energy conservation check
-    conservation = check_energy_conservation(total_energy)
-
-    # Phase space
-    position, velocity = calculate_phase_space_trajectory(u_history, dt)
-
-    # Wave statistics
-    stats = calculate_wave_statistics(u_history, time_points)
-
-    # Wave velocity
-    wave_velocity = calculate_wave_velocity(u_history, x, time_points)
-
-    # Fourier spectrum at final time
-    k, power = calculate_fourier_spectrum(u_history[-1], dx)
-
-    results = {
-        'energy': {
-            'kinetic': kinetic_energy,
-            'potential': potential_energy,
-            'total': total_energy,
-            'conservation': conservation
-        },
-        'phase_space': {
-            'position': position,
-            'velocity': velocity
-        },
-        'statistics': stats,
-        'wave_velocity': wave_velocity,
-        'fourier': {
-            'wavenumbers': k,
-            'power_spectrum': power
-        },
-        'time_points': time_points,
-        'x': x
+    stats = {
+        "max_tip_velocity": max_tip_velocity,
+        "max_tip_velocity_time": max_tip_velocity_time,
+        "sound_speed": sound_speed,
+        "is_supersonic": is_supersonic,
+        "mach_number": max_tip_velocity / sound_speed,
     }
 
-    return results
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(time, tip_velocities, linewidth=2, label="Tip Velocity")
+    ax.axhline(
+        y=sound_speed, color="red", linestyle="--", linewidth=2, label=f"Sound Speed ({sound_speed} m/s)"
+    )
+    ax.axhline(y=-sound_speed, color="red", linestyle="--", linewidth=2)
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Tip Velocity (m/s)")
+    ax.set_title(
+        f"Whip Tip Velocity\n"
+        f"Max: {max_tip_velocity:.2f} m/s (Mach {stats['mach_number']:.2f}) at t={max_tip_velocity_time:.3f}"
+    )
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Highlight supersonic region
+    if is_supersonic:
+        supersonic_mask = np.abs(tip_velocities) > sound_speed
+        ax.fill_between(
+            time,
+            -sound_speed,
+            sound_speed,
+            where=supersonic_mask,
+            alpha=0.2,
+            color="red",
+            label="Supersonic",
+        )
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Tip velocity plot saved to {save_path}")
+
+    plt.show()
+
+    return stats
 
 
-def print_analysis_summary(analysis: Dict):
+def check_numerical_stability(displacement_history: List[np.ndarray], threshold: float = 1e6) -> dict:
     """
-    Print a formatted summary of the analysis results.
+    Check for numerical instabilities (NaN, Inf, explosion).
 
     Args:
-        analysis: Dictionary from analyze_simulation()
+        displacement_history: List of displacement arrays
+        threshold: Maximum allowed displacement
+
+    Returns:
+        Dictionary with stability information
     """
-    print("=" * 60)
-    print("WAVE SIMULATION ANALYSIS SUMMARY")
-    print("=" * 60)
+    has_nan = False
+    has_inf = False
+    has_explosion = False
+    first_nan_step = None
+    first_inf_step = None
+    first_explosion_step = None
 
-    # Energy conservation
-    cons = analysis['energy']['conservation']
+    for i, disp in enumerate(displacement_history):
+        if np.any(np.isnan(disp)):
+            has_nan = True
+            if first_nan_step is None:
+                first_nan_step = i
+
+        if np.any(np.isinf(disp)):
+            has_inf = True
+            if first_inf_step is None:
+                first_inf_step = i
+
+        if np.max(np.abs(disp)) > threshold:
+            has_explosion = True
+            if first_explosion_step is None:
+                first_explosion_step = i
+
+    is_stable = not (has_nan or has_inf or has_explosion)
+
+    return {
+        "is_stable": is_stable,
+        "has_nan": has_nan,
+        "has_inf": has_inf,
+        "has_explosion": has_explosion,
+        "first_nan_step": first_nan_step,
+        "first_inf_step": first_inf_step,
+        "first_explosion_step": first_explosion_step,
+        "threshold": threshold,
+    }
+
+
+def print_simulation_summary(
+    solver_name: str,
+    energy_stats: dict,
+    stability_stats: dict,
+    total_time: float,
+    num_steps: int,
+) -> None:
+    """
+    Print a formatted summary of simulation results.
+
+    Args:
+        solver_name: Name of the solver used
+        energy_stats: Dictionary from analyze_energy_conservation
+        stability_stats: Dictionary from check_numerical_stability
+        total_time: Total simulation time
+        num_steps: Number of time steps
+    """
+    print("\n" + "=" * 70)
+    print(f"SIMULATION SUMMARY - {solver_name}")
+    print("=" * 70)
+
+    print(f"\nSimulation Parameters:")
+    print(f"  Total Time:        {total_time:.4f}")
+    print(f"  Number of Steps:   {num_steps}")
+    print(f"  Time Step:         {total_time / num_steps:.6f}")
+
     print(f"\nEnergy Conservation:")
-    print(f"  Initial Energy: {cons['initial_energy']:.6e}")
-    print(f"  Final Energy:   {cons['final_energy']:.6e}")
-    print(f"  Relative Change: {cons['relative_change']*100:.2f}%")
-    print(f"  Max Deviation:   {cons['max_deviation']*100:.2f}%")
-    print(f"  Conserved (within {cons['tolerance']*100:.0f}%): {cons['is_conserved']}")
+    print(f"  Initial Energy:    {energy_stats['initial_energy']:.6e}")
+    print(f"  Final Energy:      {energy_stats['final_energy']:.6e}")
+    print(f"  Relative Drift:    {energy_stats['relative_drift']*100:.4f}%")
+    print(f"  Tolerance:         {energy_stats['tolerance']*100:.1f}%")
+    print(f"  Status:            {'✓ CONSERVED' if energy_stats['is_conserved'] else '✗ NOT CONSERVED'}")
 
-    # Wave velocity
-    print(f"\nWave Propagation:")
-    print(f"  Estimated Velocity: {analysis['wave_velocity']:.4f}")
+    print(f"\nNumerical Stability:")
+    print(f"  Stable:            {'✓ YES' if stability_stats['is_stable'] else '✗ NO'}")
+    if stability_stats["has_nan"]:
+        print(f"  NaN detected:      Step {stability_stats['first_nan_step']}")
+    if stability_stats["has_inf"]:
+        print(f"  Inf detected:      Step {stability_stats['first_inf_step']}")
+    if stability_stats["has_explosion"]:
+        print(f"  Explosion:         Step {stability_stats['first_explosion_step']}")
 
-    # Statistics at final time
-    stats = analysis['statistics']
-    print(f"\nFinal State Statistics:")
-    print(f"  Mean Displacement: {stats['mean'][-1]:.6e}")
-    print(f"  Std Deviation:     {stats['std'][-1]:.6e}")
-    print(f"  Max Displacement:  {stats['max'][-1]:.6e}")
-    print(f"  Min Displacement:  {stats['min'][-1]:.6e}")
-
-    print("=" * 60)
+    print("\n" + "=" * 70 + "\n")
