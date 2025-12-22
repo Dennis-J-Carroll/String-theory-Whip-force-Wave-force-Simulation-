@@ -96,9 +96,9 @@ def run_whip_simulation():
     # Create solver - use Verlet for better energy conservation
     solver = VerletSolver(whip, enable_force=False)  # Disable external force for pure whip dynamics
 
-    # Solve with smaller timestep for accuracy
+    # Solve with smaller timestep for accuracy (whip requires very small dt due to high wave speed at tip)
     print("\nSolving whip dynamics...")
-    displacement_history = solver.solve(total_time=2.0, dt=0.001, save_interval=20, verbose=True)
+    displacement_history = solver.solve(total_time=2.0, dt=0.0004, save_interval=50, verbose=True)
 
     # Visualizations
     print("\nGenerating visualizations...")

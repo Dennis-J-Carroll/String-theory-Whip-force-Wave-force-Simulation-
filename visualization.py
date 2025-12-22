@@ -37,7 +37,8 @@ def plot_wave_evolution(
     plt.figure(figsize=(12, 7))
 
     num_times = u.shape[0]
-    step = max(1, num_times // num_snapshots)
+    # Select exactly num_snapshots evenly spaced time points
+    indices = np.linspace(0, num_times - 1, num_snapshots, dtype=int)
 
     # Use colormap for time progression
     colors = plt.cm.viridis(np.linspace(0, 1, num_snapshots))
