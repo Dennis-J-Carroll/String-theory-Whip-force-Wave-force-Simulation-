@@ -32,9 +32,9 @@ def run_basic_simulation():
     # Create solver
     solver = CentralDifferenceSolver(string, enable_force=True)
 
-    # Solve
+    # Solve (using smaller dt to satisfy CFL condition)
     print("\nSolving wave equation...")
-    displacement_history = solver.solve(total_time=5.0, dt=0.01, save_interval=10, verbose=True)
+    displacement_history = solver.solve(total_time=5.0, dt=0.001, save_interval=100, verbose=True)
 
     # Visualizations
     print("\nGenerating visualizations...")
@@ -96,9 +96,9 @@ def run_whip_simulation():
     # Create solver - use Verlet for better energy conservation
     solver = VerletSolver(whip, enable_force=False)  # Disable external force for pure whip dynamics
 
-    # Solve with smaller timestep for accuracy
+    # Solve with smaller timestep for accuracy (whip requires very small dt due to high wave speed at tip)
     print("\nSolving whip dynamics...")
-    displacement_history = solver.solve(total_time=2.0, dt=0.001, save_interval=20, verbose=True)
+    displacement_history = solver.solve(total_time=2.0, dt=0.0004, save_interval=50, verbose=True)
 
     # Visualizations
     print("\nGenerating visualizations...")
@@ -158,7 +158,7 @@ def run_solver_comparison():
         string.set_initial_gaussian(center=25.0, width=5.0, amplitude=1.0)
 
         solver_instance = SolverClass(string, enable_force=True)
-        displacement_history = solver_instance.solve(total_time=2.0, dt=0.01, save_interval=20, verbose=False)
+        displacement_history = solver_instance.solve(total_time=2.0, dt=0.001, save_interval=200, verbose=False)
 
         results[solver_name] = displacement_history
 

@@ -37,12 +37,13 @@ def plot_wave_evolution(
     plt.figure(figsize=(12, 7))
 
     num_times = u.shape[0]
-    step = max(1, num_times // num_snapshots)
+    # Select exactly num_snapshots evenly spaced time points
+    indices = np.linspace(0, num_times - 1, num_snapshots, dtype=int)
 
     # Use colormap for time progression
     colors = plt.cm.viridis(np.linspace(0, 1, num_snapshots))
 
-    for idx, i in enumerate(range(0, num_times, step)):
+    for idx, i in enumerate(indices):
         if time_history is not None:
             time_label = f"t={time_history[i]:.2f}"
         elif dt is not None:
