@@ -32,7 +32,7 @@ def run_basic_simulation():
     # Create solver
     solver = CentralDifferenceSolver(string, enable_force=True)
 
-    # Solve (using smaller dt to satisfy CFL condition)
+    # Solve (use smaller dt to satisfy CFL condition)
     print("\nSolving wave equation...")
     displacement_history = solver.solve(total_time=5.0, dt=0.001, save_interval=100, verbose=True)
 
@@ -158,6 +158,7 @@ def run_solver_comparison():
         string.set_initial_gaussian(center=25.0, width=5.0, amplitude=1.0)
 
         solver_instance = SolverClass(string, enable_force=True)
+        # Use smaller dt to satisfy CFL condition
         displacement_history = solver_instance.solve(total_time=2.0, dt=0.001, save_interval=200, verbose=False)
 
         results[solver_name] = displacement_history

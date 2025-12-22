@@ -43,7 +43,12 @@ def plot_wave_evolution(
     # Use colormap for time progression
     colors = plt.cm.viridis(np.linspace(0, 1, num_snapshots))
 
-    for idx, i in enumerate(indices):
+    # Limit to exactly num_snapshots
+    snapshot_count = 0
+    for idx, i in enumerate(range(0, num_times, step)):
+        if snapshot_count >= num_snapshots:
+            break
+
         if time_history is not None:
             time_label = f"t={time_history[i]:.2f}"
         elif dt is not None:
@@ -51,7 +56,8 @@ def plot_wave_evolution(
         else:
             time_label = f"step {i}"
 
-        plt.plot(x, u[i, :], label=time_label, color=colors[idx], linewidth=2, alpha=0.8)
+        plt.plot(x, u[i, :], label=time_label, color=colors[snapshot_count], linewidth=2, alpha=0.8)
+        snapshot_count += 1
 
     plt.xlabel("Position (x)", fontsize=12)
     plt.ylabel("Displacement u(x, t)", fontsize=12)
