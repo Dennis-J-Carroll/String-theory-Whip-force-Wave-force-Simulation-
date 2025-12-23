@@ -19,7 +19,7 @@ This isn't just a physics simulation—it's a **thinking laboratory** for develo
 - **Training stability** in deep learning (energy conservation ↔ loss stability)
 - **Interpretability** through physics-inspired design (observables ↔ mechanistic understanding)
 
-**The pattern:** Understand physics deeply → Extract mathematical principles → Apply to ML architecture design → Build more interpretable, robust AI systems.
+**The pattern:** *The why? -----> apply* Understand physics deeply → Extract mathematical principles → Apply to ML architecture design → Build more interpretable, robust AI systems.
 
 **See [ML_CONNECTIONS.md](ML_CONNECTIONS.md) for explicit connections between this simulation and modern machine learning architectures.**
 
