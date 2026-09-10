@@ -26,13 +26,19 @@ This project implements a comprehensive numerical simulation of **classical wave
 - ✅ CFL stability condition checking
 - ✅ Real-time energy conservation monitoring
 
-### Visualization & Analysis
+### Visualization & Analysis — DJC Design System
+- **Themed plots**: deep-navy canvas with teal/cyan glow lines, glass legends, and Orbitron headings — the same aesthetic as [dennisjcarroll.com](https://dennisjcarroll.com)
+- **Equation footnotes**: every chart carries its governing equation (`∂²u/∂t² = c²∂²u/∂x² + F(u)`, `c = √(T/μ)`, the LJ force) with the actual constants substituted in, plus a green/red **CFL badge** (`c·dt/dx` vs the stability limit) — see `djc_theme.equation_footnote` / `cfl_badge`
+- **Signature colormaps**: `djc_wave` (teal → electric cyan), `djc_diverging` (violet / navy / cyan) and `djc_time` (slate past → glowing present) for wave evolution overlays
 - Wave evolution plots with customizable time steps
 - Energy conservation plots (Kinetic, Potential, Total)
 - Phase space trajectory visualization
 - Space-time heatmaps for wave history
 - Animated GIF generation
 - Potential and force function plots
+- Themed console output (ANSI teal/cyan banners, drift meters)
+
+All theming lives in `djc_theme.py` — the single source of truth for palette, fonts and console styling. Import it and call `apply()` to theme any new plot. Brand fonts are fetched once from Google Fonts and cached under `~/.cache/djc_theme/fonts`; set `DJC_THEME_NO_FONTS=1` to stay fully offline (falls back to DejaVu).
 
 ### Software Engineering
 - Object-oriented design with String and Solver classes
@@ -76,15 +82,23 @@ $$F(u) = -\frac{dV}{du} = 12k_1 \left(\frac{1}{u^{13}}\right) - 6k_2 \left(\frac
 .
 ├── config.yaml          # Simulation configuration parameters
 ├── constants.py         # Physical constants and parameters (deprecated, use config.yaml)
+├── djc_theme.py         # DJC Design System: palette, fonts, colormaps, console styling
 ├── string_model.py      # String class for wave properties
 ├── solver.py            # Numerical solvers (Central Diff, RK4, Verlet)
-├── visualization.py     # Plotting and visualization functions
-├── analysis.py          # Energy tracking and phase space analysis
+├── visualization.py     # Plotting and visualization functions (themed)
+├── analysis.py          # Energy tracking and phase space analysis (themed)
 ├── main.py              # Main simulation script
+├── playground.py        # Live slider-driven playground (Courant torture dial included)
+├── sonify.py            # Stdlib-only sonification: hear the wave / the crack
+├── report.py            # Self-contained interactive HTML report generator
+├── whip_challenge.py    # Gamified Mach-1 challenge with local leaderboard
+├── missions.py          # Break It On Purpose: guided destruction missions
+├── accuracy_lab.py      # Convergence study: why the metrics behave
 ├── tests/               # Unit tests
 │   ├── test_solver.py
 │   ├── test_string.py
-│   └── test_energy.py
+│   ├── test_energy.py
+│   └── test_accuracy_lab.py
 └── docs/                # Generated animations and plots
 ```
 
@@ -109,6 +123,109 @@ Run the default simulation:
 ```bash
 python main.py
 ```
+
+### The Playground (interactive)
+
+A live, playable window — drag sliders and watch the physics respond in real time:
+```bash
+python playground.py
+```
+- Sliders: tension, LJ well equilibrium u\*, well stiffness ω₀, damping, pulse amplitude
+- Live energy bars, probe-node sparkline, and an equation strip showing the actual constants in play (with a CFL stability badge)
+- Hotkeys: `space` pause · `r` reset · `s` export the probe signal as audio · `q` quit
+- `python playground.py --selftest` renders a headless preview to `output/playground_preview.png`
+
+### Sonification (hear the physics)
+
+Map solver velocity histories to audio with zero third-party dependencies:
+```bash
+python sonify.py whip     # the tip of the whip — you can hear the crack
+python sonify.py string   # a probe node on the uniform string
+python sonify.py whip --no-play   # just export output/whip_crack.wav
+```
+
+### Interactive HTML report (share the simulation)
+
+`main.py` writes `output/wave_report.html` on every run — a single self-contained
+file (data as JSON, `<canvas>` renderer, zero dependencies, works from `file://`).
+Recipients can scrub time, play/pause, hover the wave for exact `(x, u, t)`
+readouts, and click/drag the space-time heatmap to extract the wavefront shape
+at any instant (shown as an amber ghost curve). Generate a standalone demo:
+```bash
+python report.py --out output/wave_report.html
+```
+
+### Crack the Whip (challenge mode)
+
+Drive the whip tip past **Mach 1.0** on a parameter budget — taper ratio,
+taper exponent, pulse amplitude and velocity kick (the hand's snap) all draw
+from the same energy wallet. Overspend and you lose the efficiency bonus;
+the leaderboard remembers your best throws:
+```bash
+python whip_challenge.py --demo   # three archetypal throws
+python whip_challenge.py          # interactive session
+python whip_challenge.py --best   # leaderboard (output/whip_leaderboard.json)
+```
+The physics scales like a real whip: tip speed grows with pulse energy and
+~√(taper ratio) — until extra taper stops paying and skill beats brute force.
+
+### The Accuracy Lab (why the metrics behave)
+
+A two-part convergence study that turns "drift < 5%" from an arbitrary
+pass/fail into understanding. It re-solves one initial condition against the
+**exact d'Alembert solution** (method of images, exact through reflections):
+
+- **Study 1 — spatial**: refine the grid with dt ∝ dx and every integrator
+  lands on ~dx² — the grid, not the time scheme, sets spatial error.
+- **Study 2 — temporal**: freeze the grid and halve dt. Now they split:
+  central difference and Verlet share a stencil and drift identically at ~dt²,
+  while RK4 lands ~200× lower (its leading error on linear waves is pure
+  amplitude damping, ~dt⁵).
+
+The deepest lesson: **the metric picks the winner** — L2 says "all equal",
+drift says RK4 ≫ Verlet = CD. (The lab's first run exposed a real solver bug —
+a first-order leapfrog bootstrap silently capping central difference at 1st
+order — now fixed and regression-tested.)
+```bash
+python accuracy_lab.py            # full study -> output/accuracy_lab.png
+python accuracy_lab.py --selftest # smaller/faster study
+```
+
+### The Courant torture dial (feel the stability limit)
+
+The playground's auto-timestep makes instability impossible by design — so
+the new **Courant dial** (0.05–2.0) lets you break it on purpose. Push past
+1.0 and watch grid-scale noise bloom every step until the blow-up guard
+freezes the sim with a red explanation; dial back or Reset to recover.
+
+- `c` — ride the edge (Courant → 1.00)
+- `x` — cross the edge (Courant → 1.60), then recover
+- `dE` in the info panel shows energy drift live, `!` flags > 5%
+
+### Break It On Purpose (guided missions)
+
+Three guided destruction missions — each hands you a system that survives
+everything and one knob guaranteed to destroy it. Find the edge, cross it
+deliberately, bank the lesson. Progress (best score per mission) is kept in
+`output/missions_progress.json`.
+
+```bash
+python missions.py --demo            # scripted expert arcs for all three
+python missions.py                   # mission menu (interactive)
+python missions.py m1 mult=2.0       # one-shot trial, key=value overrides
+python missions.py --board           # progress summary
+python missions.py --reset           # wipe progress
+```
+
+- **M1 DETONATOR** — double the timestep until the grid explodes. Ride the
+  edge first (CFL ≥ 0.9) for bonus points; shallower overshoot scores higher
+  than brute force.
+- **M2 WALL BREAKER** — crank the pulse amplitude until it punches through
+  the Lennard-Jones wall into u < 0. The minimal shove that crosses scores
+  more than the biggest hammer.
+- **M3 SONIC TAPER** — a marginal throw is locked in; shape the taper until
+  the tip breaks Mach 1. The counter-intuitive lesson: the taper *exponent*
+  is the real lever, not the ratio.
 
 ### Custom Configuration
 
