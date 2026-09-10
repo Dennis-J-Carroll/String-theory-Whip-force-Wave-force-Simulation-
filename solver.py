@@ -212,11 +212,22 @@ class WaveSolver(ABC):
         """
         # Wave equation term
         d2u_dx2 = self.compute_spatial_derivative_second(u, dx)
+
+        # Free right boundary: use a mirrored ghost node (u[N+1] = u[N-1]) so
+        # the tip node experiences real restoring forces. Without this the tip
+        # has zero acceleration forever and a whip could never crack.
+        if self.string is not None and getattr(self.string, "boundary_right", "fixed") == "free":
+            d2u_dx2[-1] = 2.0 * (u[-2] - u[-1]) / dx**2
+
         acceleration = c**2 * d2u_dx2
 
         # Add external force if enabled
         if self.enable_force:
             force = force_function(u, self.k1, self.k2)
+            # Numerical guard: F(u) ~ 1/u^13 diverges as u -> 0, which used to
+            # detonate the solution at step 1 (energies ~1e67). A generous cap
+            # never engages in normal dynamics — only at the singularity.
+            force = np.clip(force, -1e4, 1e4)
             acceleration += force
 
         return acceleration
@@ -325,8 +336,11 @@ class CentralDifferenceSolver(WaveSolver):
     def step(self, u, v, dt, dx, c, **kwargs):
         """Perform one central difference time step."""
         if self.u_prev is None:
-            # First step: use velocity to estimate u_prev
-            self.u_prev = u - v * dt
+            # First step: second-order Taylor start, u(t-dt) = u - v*dt + 0.5*a*dt^2.
+            # The naive u - v*dt is only first-order accurate and would cap the
+            # entire scheme's convergence at O(dt) (the initial condition itself
+            # would inject a larger error than the integration ever removes).
+            self.u_prev = u - v * dt + 0.5 * dt**2 * self.compute_acceleration(u, c, dx)
 
         # Compute acceleration
         acceleration = self.compute_acceleration(u, c, dx)

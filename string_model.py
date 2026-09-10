@@ -129,7 +129,10 @@ class String:
         self.displacement = amplitude * np.sin(k * self.x + phase)
         self.velocity = np.zeros_like(self.displacement)
 
-    def set_initial_pulse(self, position: float, amplitude: float = 2.0, width: float = 2.0) -> None:
+    def set_initial_pulse(
+        self, position: float, amplitude: float = 2.0, width: float = 2.0,
+        velocity_kick: float = 0.0,
+    ) -> None:
         """
         Set initial displacement to a localized pulse.
 
@@ -137,10 +140,15 @@ class String:
             position: Position of the pulse
             amplitude: Amplitude of the pulse
             width: Width of the pulse
+            velocity_kick: Initial transverse velocity of the pulse region
+                [m/s] — models the hand's snap when whipping. 0 = released
+                from rest (classic pluck).
         """
         # Use a squared exponential for a more localized pulse
-        self.displacement = amplitude * np.exp(-((self.x - position) ** 2) / width**2)
-        self.velocity = np.zeros_like(self.displacement)
+        envelope = np.exp(-((self.x - position) ** 2) / width**2)
+        self.displacement = amplitude * envelope
+        # Optional velocity kick models the hand's snap in a whip throw (0 = pluck)
+        self.velocity = velocity_kick * envelope
 
     def set_initial_custom(
         self,
@@ -195,9 +203,9 @@ class String:
         Returns:
             Total kinetic energy: KE = (1/2) * ∫ μ(x) * (∂u/∂t)^2 dx
         """
-        # Trapezoidal integration
+        # Trapezoidal integration (np.trapz pre-NumPy 2.0, np.trapezoid since)
         integrand = 0.5 * self.density * self.velocity**2
-        return np.trapezoid(integrand, dx=self.dx)
+        return np.trapz(integrand, dx=self.dx)
 
     def get_potential_energy(self) -> float:
         """
@@ -209,7 +217,7 @@ class String:
         # Calculate spatial derivative using central differences
         du_dx = np.gradient(self.displacement, self.dx)
         integrand = 0.5 * self.tension * du_dx**2
-        return np.trapezoid(integrand, dx=self.dx)
+        return np.trapz(integrand, dx=self.dx)
 
     def get_total_energy(self) -> float:
         """
