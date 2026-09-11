@@ -65,6 +65,13 @@ This project implements a comprehensive numerical simulation of **classical wave
 
 All theming lives in `djc_theme.py` — the single source of truth for palette, fonts and console styling. Import it and call `apply()` to theme any new plot. Brand fonts are fetched once from Google Fonts and cached under `~/.cache/djc_theme/fonts`; set `DJC_THEME_NO_FONTS=1` to stay fully offline (falls back to DejaVu).
 
+### Interactive (Plotly) Surfaces — same look, live charts
+- **`djc_plotly.py`** bridges the design system to Plotly: a registered `djc_dark` template (navy canvas, teal/cyan colorway, glass legends), the signature colorscales (`WAVE_SCALE`, `DIVERGING_SCALE`, `TIME_SCALE`) and `glow_traces` — the glow line, as Plotly traces
+- **`interactive_visualization.py`**: animated wave (themed Play/Pause + time slider), 3D space-time surface, potential & force, energy monitor, phase space — all sharing the DJC look and series colors (KE violet · PE teal · Total cyan, matching the static charts)
+- **`dashboard_app.py`**: a real-time Dash dashboard (`python dashboard_app.py` → http://localhost:8050) with the calibrated Lennard-Jones well as defaults (u* = 2 m, ω₀ = 5 rad/s — the cosmological 10³⁵ defaults detonated), a **CFL badge** wired to a dt-as-fraction-of-limit slider (past 1.0 it refuses to run, playground rules), k₂ offsets that move the well without moving the equilibrium, and honest energies (KE + elastic + well on the absolute displacement — the conserved ledger, drift ≈ 0.06%)
+- **`interactive_demo.py`**: generates all six themed Plotly artifacts as HTML under `output/` (first one offline-capable with plotly.js embedded)
+- **`wave_solver(...)`** in `solver.py`: the legacy positional API `dashboard_app`/`interactive_demo` were written against (it did not exist), implemented on the modern String/Verlet physics — free ends by default so the string can rest at u*
+
 ### Software Engineering
 - Object-oriented design with String and Solver classes
 - YAML configuration files for parameter management
@@ -108,10 +115,14 @@ $$F(u) = -\frac{dV}{du} = 12k_1 \left(\frac{1}{u^{13}}\right) - 6k_2 \left(\frac
 ├── config.yaml          # Simulation configuration parameters
 ├── constants.py         # Physical constants and parameters (deprecated, use config.yaml)
 ├── djc_theme.py         # DJC Design System: palette, fonts, colormaps, console styling
+├── djc_plotly.py        # DJC Design System bridge for Plotly (template + scales)
 ├── string_model.py      # String class for wave properties
-├── solver.py            # Numerical solvers (Central Diff, RK4, Verlet)
+├── solver.py            # Numerical solvers (Central Diff, RK4, Verlet) + wave_solver shim
 ├── visualization.py     # Plotting and visualization functions (themed)
 ├── analysis.py          # Energy tracking and phase space analysis (themed)
+├── interactive_visualization.py  # Plotly interactive charts (themed)
+├── dashboard_app.py     # Real-time Dash dashboard (themed, calibrated physics)
+├── interactive_demo.py  # Generates the six themed Plotly HTML artifacts
 ├── main.py              # Main simulation script
 ├── playground.py        # Live slider-driven playground (Courant torture dial included)
 ├── sonify.py            # Stdlib-only sonification: hear the wave / the crack
@@ -269,6 +280,24 @@ string:
 Then run:
 ```bash
 python main.py --config config.yaml
+```
+
+### The Dash Dashboard (real-time web UI)
+
+```bash
+python dashboard_app.py        # → http://localhost:8050
+```
+
+Live sliders for the well stiffness (k₂ offsets that keep the equilibrium at
+u* = 2 m), wave speed, CFL fraction, grid and pulse shape — with a green/red
+CFL badge, a themed animated wave, 3D surface, energy monitor, phase space and
+the potential/force curves. Requires the Plotly extras:
+`pip install dash dash-bootstrap-components plotly` (also in requirements.txt).
+
+To regenerate the static interactive artifacts instead:
+
+```bash
+python interactive_demo.py     # → output/*.html (animation, 3D, energies, ...)
 ```
 
 ### Running Tests

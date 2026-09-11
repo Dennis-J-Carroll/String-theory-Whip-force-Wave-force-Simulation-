@@ -1,158 +1,153 @@
 """
-Interactive Demo Script for Wave Simulation
+Interactive Demo Script for Wave Simulation.
 
-This script demonstrates the interactive visualization capabilities
-of the wave simulation package. It generates several interactive
-plots that can be explored in a web browser.
+Generates the full set of interactive (Plotly) artifacts in the DJC design
+system: animated wave, 3D space-time surface, potential & force curves,
+energy monitor, phase space, and the composite dashboard — all as
+self-contained HTML files under ``output/``.
+
+Physics: the calibrated wave-scale Lennard-Jones well (u* = 2 m,
+omega0 = 5 rad/s) used by main.py and the dashboard, integrated with the
+same Verlet solver via ``wave_solver``.
 
 Usage:
     python interactive_demo.py
 """
 
+import os
+
 import numpy as np
+
 from solver import wave_solver, potential_function, force_function
+from solver import saved_frame_velocities
+from solver import WAVE_SCALE_K1, WAVE_SCALE_K2, WELL_U_STAR, WELL_OMEGA0
 from interactive_visualization import (
     create_animated_wave,
     create_3d_wave_surface,
     create_interactive_potential_force,
     create_energy_monitor,
     create_phase_space,
-    create_dashboard_layout
+    create_dashboard_layout,
 )
-from analysis import analyze_simulation, print_analysis_summary
-import constants
+from analysis import analyze_energy_conservation, check_numerical_stability, \
+    print_simulation_summary
+
+import djc_theme as t
+import djc_plotly as P
+
+# ---------------------------------------------------------------------------
+# Simulation parameters — the calibrated wave scale (see main.py)
+# ---------------------------------------------------------------------------
+
+C = 1.0            # wave speed (m/s) — tension = c^2 on the unit-density string
+DX = 0.1           # grid spacing (m)
+X = np.arange(0, 50 + DX, DX)
+DT = 0.02          # time step (s) — CFL = 0.2, comfortably stable
+TOTAL_TIME = 8.0   # seconds
+
+K1 = WAVE_SCALE_K1
+K2 = WAVE_SCALE_K2
+
+# Initial pulse: a Gaussian bump on the well floor (wave_solver adds the u*
+# background itself, so u0 here is the displacement *relative* to equilibrium)
+AMPLITUDE = 1.0
+CENTER = 25.0
+WIDTH = 2.0
+
+OUT_DIR = "output"
 
 
 def main():
-    """
-    Run interactive demo with multiple visualization types.
-    """
-    print("=" * 70)
-    print(" 🌊 INTERACTIVE WAVE SIMULATION DEMO 🌊")
-    print("=" * 70)
-    print("\nInitializing simulation with default parameters...")
-    print(f"  K1 = {constants.K1:.2e}")
-    print(f"  K2 = {constants.K2:.2e}")
-    print(f"  Wave Speed (c) = {constants.C}")
-    print(f"  Time Step (dt) = {constants.DT}")
-    print(f"  Space Step (dx) = {constants.DX}")
-    print(f"  Total Time = {constants.TOTAL_TIME}")
+    t.banner("INTERACTIVE DEMO", "six DJC-themed Plotly artifacts → output/",
+             eyebrow="WAVE FORCE SIMULATOR")
 
-    # Run simulation
-    print("\n🔄 Running simulation...")
-    u_history, time_points = wave_solver(
-        constants.x,
-        constants.u0,
-        constants.u0_prev,
-        constants.C,
-        constants.DT,
-        constants.TOTAL_TIME,
-        constants.K1,
-        constants.K2
+    t.section("simulation")
+    t.kv("grid", f"{len(X)} points · dx = {DX:g} m")
+    t.kv("time", f"T = {TOTAL_TIME:g} s · dt = {DT:g} s (CFL = {C * DT / DX:.2f})")
+    t.kv("well", f"u* = {WELL_U_STAR:g} m · ω₀ = {WELL_OMEGA0:g} rad/s")
+    t.kv("k1, k2", f"{K1:.3g}, {K2:.3g}")
+
+    t.section("running simulation")
+    u0 = AMPLITUDE * np.exp(-((X - CENTER) ** 2) / (2 * WIDTH ** 2))
+    u0_prev = u0.copy()  # rest start
+    u_history, time_points, v_history = wave_solver(
+        X, u0, u0_prev, C, DT, TOTAL_TIME, K1, K2, return_velocity=True)
+    print(t.success(f"{len(time_points)} frames computed"))
+
+    # --- Real energies ------------------------------------------------------
+    # Conserved ledger: KE(½v²) + elastic(½c²u_x²) + well(V(u) − V(u*)) on the
+    # ABSOLUTE displacement — no |u − u*| reflection (that's a different,
+    # non-conserved potential). Velocities come from saved_frame_velocities,
+    # honest to the leapfrog recurrence.
+    ke = 0.5 * np.mean(v_history ** 2, axis=1)
+    pe_elastic = (0.5 * C ** 2 * np.diff(u_history, axis=1) ** 2
+                  / DX ** 2).mean(axis=1)
+    pe_well = np.mean(potential_function(u_history, K1, K2)
+                      - potential_function(WELL_U_STAR, K1, K2), axis=1)
+    pe = pe_elastic + pe_well
+    total = ke + pe
+
+    # --- Honest summary through the themed console --------------------------
+    t.section("analysis")
+    energy_stats = analyze_energy_conservation(
+        time_points.tolist(),
+        list(zip(ke, pe, total)),
+        tolerance=0.05,
+        plot=False,
     )
-    print(f"✓ Simulation complete! {len(u_history)} time steps computed.\n")
+    stability = check_numerical_stability(list(u_history))
+    print_simulation_summary("Verlet (wave_solver shim)", energy_stats,
+                             stability, TOTAL_TIME, len(time_points) - 1)
 
-    # Perform comprehensive analysis
-    print("📊 Analyzing results...")
-    analysis = analyze_simulation(
-        u_history,
-        time_points,
-        constants.x,
-        constants.DT,
-        constants.DX,
-        constants.K1,
-        constants.K2
-    )
-    print_analysis_summary(analysis)
+    # --- Themed interactive artifacts ---------------------------------------
+    t.section("interactive artifacts")
+    os.makedirs(OUT_DIR, exist_ok=True)
 
-    # Generate interactive visualizations
-    print("\n🎨 Generating interactive visualizations...")
+    def save(fig, name, *, offline=False):
+        # The first (flagship) artifact embeds plotly.js so it works with no
+        # network at all; the rest reference the CDN to stay small.
+        P.write_html(fig, os.path.join(OUT_DIR, name),
+                     include_plotlyjs=True if offline else "cdn")
+        print(t.success(name))
 
-    # 1. Animated 2D Wave
-    print("  1. Creating animated wave propagation...")
-    step = max(1, len(u_history) // 100)  # Sample for animation
-    u_sampled = u_history[::step]
-    t_sampled = time_points[::step]
+    u_sampled = u_history[::max(1, len(u_history) // 120)]
+    t_sampled = time_points[::max(1, len(time_points) // 120)]
 
-    fig_animation = create_animated_wave(constants.x, u_sampled, t_sampled)
-    fig_animation.write_html("output_animation.html")
-    print("     Saved to: output_animation.html")
+    save(create_animated_wave(X, u_sampled, t_sampled, baseline=WELL_U_STAR),
+         "animation.html")
+    save(create_3d_wave_surface(
+        X, u_history[::max(1, len(u_history) // 60)],
+        time_points[::max(1, len(time_points) // 60)]), "3d_surface.html")
+    u_window = np.linspace(1.5, 4.5, 500)  # the bowl; u->0 is a 1e21 wall
+    save(create_interactive_potential_force(
+        u_window,
+        potential_function(u_window, K1, K2),
+        force_function(u_window, K1, K2),
+        title=f"Lennard-Jones well — k₁ = {K1:.3g}, k₂ = {K2:.3g}",
+    ), "potential_force.html")
+    save(create_energy_monitor(time_points, ke, pe, total), "energy_monitor.html")
 
-    # 2. 3D Surface Plot
-    print("  2. Creating 3D wave evolution surface...")
-    step_3d = max(1, len(u_history) // 50)  # Sample for 3D
-    u_sampled_3d = u_history[::step_3d]
-    t_sampled_3d = time_points[::step_3d]
+    center_idx = len(X) // 2
+    save(create_phase_space(
+        u_history[:, center_idx], velocity[:, center_idx], time_points,
+        title=f"Phase space at x = {X[center_idx]:.2f} m",
+    ), "phase_space.html")
+    # Flagship composite — fully offline-capable
+    save(create_dashboard_layout(
+        X, u_history, time_points,
+        potential_function(u_window, K1, K2),
+        force_function(u_window, K1, K2),
+        u_window,
+        ke, pe,
+    ), "dashboard.html", offline=True)
 
-    fig_3d = create_3d_wave_surface(constants.x, u_sampled_3d, t_sampled_3d)
-    fig_3d.write_html("output_3d_surface.html")
-    print("     Saved to: output_3d_surface.html")
-
-    # 3. Potential and Force Functions
-    print("  3. Creating potential & force function plot...")
-    u_range = np.linspace(0.1, 5.0, 500)
-    potential = potential_function(u_range, constants.K1, constants.K2)
-    force = force_function(u_range, constants.K1, constants.K2)
-
-    fig_potential = create_interactive_potential_force(u_range, potential, force)
-    fig_potential.write_html("output_potential_force.html")
-    print("     Saved to: output_potential_force.html")
-
-    # 4. Energy Monitor
-    print("  4. Creating energy conservation monitor...")
-    fig_energy = create_energy_monitor(
-        analysis['time_points'],
-        analysis['energy']['kinetic'],
-        analysis['energy']['potential'],
-        analysis['energy']['total']
-    )
-    fig_energy.write_html("output_energy_monitor.html")
-    print("     Saved to: output_energy_monitor.html")
-
-    # 5. Phase Space
-    print("  5. Creating phase space trajectory...")
-    center_idx = len(constants.x) // 2
-    fig_phase = create_phase_space(
-        analysis['phase_space']['position'],
-        analysis['phase_space']['velocity'],
-        time_points,
-        title=f"Phase Space at x={constants.x[center_idx]:.2f}"
-    )
-    fig_phase.write_html("output_phase_space.html")
-    print("     Saved to: output_phase_space.html")
-
-    # 6. Comprehensive Dashboard
-    print("  6. Creating comprehensive dashboard...")
-    fig_dashboard = create_dashboard_layout(
-        constants.x,
-        u_history,
-        time_points,
-        potential,
-        force,
-        u_range,
-        analysis['energy']['kinetic'],
-        analysis['energy']['potential']
-    )
-    fig_dashboard.write_html("output_dashboard.html")
-    print("     Saved to: output_dashboard.html")
-
-    print("\n" + "=" * 70)
-    print(" ✓ ALL VISUALIZATIONS GENERATED SUCCESSFULLY!")
-    print("=" * 70)
-    print("\n📂 Output files created:")
-    print("  • output_animation.html       - Animated wave propagation")
-    print("  • output_3d_surface.html      - 3D spacetime visualization")
-    print("  • output_potential_force.html - Potential & force functions")
-    print("  • output_energy_monitor.html  - Energy conservation tracking")
-    print("  • output_phase_space.html     - Phase space trajectory")
-    print("  • output_dashboard.html       - Comprehensive dashboard")
-    print("\n💡 TIP: Open any HTML file in your web browser to explore!")
-    print("\n🚀 For real-time interactive controls, run:")
-    print("   python dashboard_app.py")
-    print("   Then open http://localhost:8050 in your browser")
-    print("\n📓 For Jupyter notebook experience, run:")
-    print("   jupyter notebook interactive_notebook.ipynb")
-    print("=" * 70)
+    print()
+    print(t.rule(70))
+    print(t.style(" ✓ ALL VISUALIZATIONS GENERATED ", "green", bold=True))
+    print(t.rule(70))
+    print(f"\n{t.style('For real-time parameter controls, run:', 'body')}")
+    print(f"  {t.style('python dashboard_app.py', 'cyan', bold=True)}"
+          f"{t.style('   → http://localhost:8050', 'muted')}")
 
 
 if __name__ == "__main__":

@@ -439,3 +439,144 @@ class VerletSolver(WaveSolver):
         v_new = v + 0.5 * (a + a_new) * dt
 
         return u_new, v_new
+
+
+# ============================================================================
+# Compatibility shim — the wave_solver(x, u0, u0_prev, c, dt, T, K1, K2) API
+# ============================================================================
+
+# Wave-scale Lennard-Jones calibration (identical to main.py's): the well is
+# expressed at meter scale instead of the cosmological 1e-66 constants, with
+# equilibrium u* = 2 m and soft-well curvature omega0 = 5 rad/s. k1 = k2*u*^6/2
+# places the equilibrium exactly at u* (F(u*) = 0).
+WELL_U_STAR = 2.0
+WELL_OMEGA0 = 5.0
+WAVE_SCALE_K2 = WELL_OMEGA0**2 * WELL_U_STAR**8 / 36.0   # ~177.8
+WAVE_SCALE_K1 = WAVE_SCALE_K2 * WELL_U_STAR**6 / 2.0     # ~5689.6
+
+
+def wave_solver(x, u0, u0_prev, c, dt, total_time, K1=None, K2=None,
+                fixed_ends=False, save_every=1, return_velocity=False):
+    """Run a wave simulation with the legacy positional API.
+
+    ``dashboard_app.py`` and ``interactive_demo.py`` call
+    ``wave_solver(x, u0, u0_prev, c, dt, total_time, K1, K2)``. This shim
+    adapts that call to the modern physics: a :class:`String` on the given
+    grid integrated with the symplectic Verlet solver (the same scheme the
+    main simulation uses), so every entry point in the repo shares one
+    force model — including the force clamp at the 1/u^13 singularity.
+
+    Args:
+        x: Spatial grid (np.ndarray). Must be evenly spaced.
+        u0: Initial displacement (np.ndarray, same shape as x).
+        u0_prev: Displacement one step earlier (or None for a rest start).
+        c: Wave speed (scalar).
+        dt: Time step (s).
+        total_time: Duration to integrate (s).
+        K1: Repulsive force constant (None -> calibrated wave-scale default).
+        K2: Attractive force constant (None -> calibrated wave-scale default).
+        fixed_ends: Pin both endpoints at u = 0. Defaults to False (free,
+            Neumann ends) because the string rests at the well equilibrium
+            u* = 2 m: clamping the ends to zero fights the well forever,
+            doing net work on the string and wrecking energy conservation.
+        save_every: Keep a frame every N solver steps.
+        return_velocity: If True, return the solver's exact stored
+            velocities at each saved frame as a third array — use these for
+            kinetic energy instead of reconstructing from frames (the
+            reconstruction is exact at interior frames but finite-order at
+            the endpoints).
+
+    Returns:
+        (u_history, time_points): displacement frames (np.ndarray, one per
+        saved step, including t = 0) and matching times (np.ndarray).
+        With ``return_velocity=True``: (u_history, time_points, v_history).
+    """
+    if String is None:  # pragma: no cover - string_model is a core module
+        raise ImportError("string_model.String unavailable")
+    if dt <= 0:
+        raise ValueError("dt must be positive")
+
+    x = np.asarray(x, dtype=float)
+    u0 = np.asarray(u0, dtype=float)
+    dx = float(x[1] - x[0])
+    if not np.allclose(np.diff(x), dx, rtol=1e-6, atol=1e-12):
+        raise ValueError("wave_solver requires an evenly spaced grid")
+
+    k1 = float(K1) if K1 is not None else WAVE_SCALE_K1
+    k2 = float(K2) if K2 is not None else WAVE_SCALE_K2
+
+    length = float(x[-1] - x[0])
+    string = String(
+        length=length,
+        num_points=len(x),
+        tension=float(c) ** 2,            # tension = rho * c^2 (rho = 1)
+        density_profile="uniform",
+        density_uniform=1.0,              # rho = 1 so tension = c^2 exactly
+        boundary_left="fixed" if fixed_ends else "free",
+        boundary_right="fixed" if fixed_ends else "free",
+        # NOTE: the default is free/free — see fixed_ends in the docstring:
+        # the string rests at u* = 2 m, and clamping the ends to zero fights
+        # the well (the boundary does net work, wrecking conservation).
+    )
+
+    # Rest-position background: place the string at its well equilibrium.
+    # Without this, the calibrated force pulls the whole string toward u*,
+    # turning the caller's IC into a decaying oscillation about nothing.
+    u_star = (2.0 * k1 / k2) ** (1.0 / 6.0)
+    string.displacement = u_star + u0.copy()
+    if u0_prev is not None:
+        u_prev = np.asarray(u0_prev, dtype=float)
+        string.velocity = (u0 - u_prev) / dt
+    else:
+        string.velocity = np.zeros_like(u0)
+
+    solver = VerletSolver(string, enable_force=True, k1=k1, k2=k2,
+                          damping=0.0)
+    solver.solve(total_time, dt, save_interval=max(1, int(save_every)),
+                 check_cfl=True, verbose=False)
+
+    u_history = np.array(solver.displacement_history)
+    time_points = np.array(solver.time_history)
+    if return_velocity:
+        # velocity_history is saved in lockstep with displacement_history
+        # (including the exact v0 at t = 0), so it is already frame-aligned.
+        v_history = np.array(solver.velocity_history)
+        return u_history, time_points, v_history
+    return u_history, time_points
+
+
+def saved_frame_velocities(u_history, time_points, u0_prev=None, v0=None):
+    """Velocities of saved frames, honest to the leapfrog recurrence.
+
+    ``np.gradient`` over the saved frames already reproduces the exact
+    central-difference relation v[n] = (u[n+1] - u[n-1]) / (2*dt) at every
+    interior frame (uniform dt) — but it falls back to one-sided differences
+    at the endpoints. The first frame's velocity is known exactly from the
+    initial condition, so it is substituted; the last frame keeps its
+    one-sided estimate (error O(a*dt), one frame out of thousands).
+
+    Args:
+        u_history: Saved displacement frames.
+        time_points: Matching times (uniform dt).
+        u0_prev: Displacement one step before frame 0, in the SAME
+            coordinates as u_history (i.e. including any background the
+            shim added). Alternative to ``v0``.
+        v0: Exact initial velocity, preferred over ``u0_prev``.
+
+    Returns an array of the same shape as ``u_history``.
+    """
+    u_history = np.asarray(u_history, dtype=float)
+    time_points = np.asarray(time_points, dtype=float)
+    # edge_order=2: second-order one-sided differences at the end frames.
+    # The default (1st order) leaves an O(a*dt) velocity error on the final
+    # frame, which then dominates the whole energy-drift budget.
+    v = np.gradient(u_history, time_points, axis=0, edge_order=2)
+    if len(u_history) > 1:
+        if v0 is not None:
+            v[0] = v0
+        elif u0_prev is not None:
+            v[0] = (u_history[0] - np.asarray(u0_prev, dtype=float)) / (
+                time_points[1] - time_points[0])
+        else:
+            v[0] = 0.0
+    return v
