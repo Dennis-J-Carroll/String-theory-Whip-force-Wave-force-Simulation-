@@ -11,7 +11,7 @@ that powers dennisjcarroll.com:
     - Electric cyan (#3ef0e2) for hi-energy highlights
     - Electric violet (#7c4dff) as the secondary "neural" accent
     - Glass cards: translucent navy panels with hairline teal borders
-    - Display font: Orbitron · Body: Space Grotesk · Mono: JetBrains Mono
+    - Display font: Orbitron · Body: Space Grotesk · Mono: Fira Code
 
 This module is the single source of truth for the look. Call ``apply()``
 before plotting (visualization.py / analysis.py do this at import), and use
@@ -95,7 +95,7 @@ BORDER_LINE = (124 / 255, 180 / 255, 200 / 255, 0.18)    # --border-line
 
 FONT_DISPLAY = "Orbitron"
 FONT_SANS = "Space Grotesk"
-FONT_MONO = "JetBrains Mono"
+FONT_MONO = "Fira Code"
 
 # ============================================================================
 # COLOORMAPS — signature DJC ramps
@@ -129,7 +129,7 @@ def _register_colormaps() -> None:
 _FONT_FILES = {
     FONT_DISPLAY: "ofl/orbitron/Orbitron%5Bwght%5D.ttf",
     FONT_SANS: "ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
-    FONT_MONO: "ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+    FONT_MONO: "ofl/firacode/FiraCode%5Bwght%5D.ttf",
 }
 
 _CACHE_DIR = Path.home() / ".cache" / "djc_theme" / "fonts"

@@ -54,11 +54,65 @@ def force_function(u, k1=None, k2=None):
     if k1 is None:
         k1 = const.K1
     if k2 is None:
-        k2 = const.K2
+        k2 = const.K2    # Add small epsilon to prevent division by zero
 
-    # Add small epsilon to prevent division by zero
     u_safe = np.maximum(np.abs(u), 1e-10)
     return 12 * k1 * (1/u_safe**13) - 6 * k2 * (1/u_safe**7)
+
+
+def well_properties(k1=None, k2=None):
+    """Geometry of the Lennard-Jones well V(u) = k1/u^12 - k2/u^6.
+
+    Returns a dict with:
+        u_star:        equilibrium, (2*k1/k2)^(1/6) — where F = 0
+        depth:         well depth per unit mass, V(u_out) - V(u*) = -V(u*).
+                       This is the escape threshold: a node carrying it can
+                       just reach the V = 0 crossing.
+        turning_point: u_out = (k1/k2)^(1/6), where V = 0 on the wall side.
+    """
+    if k1 is None:
+        k1 = const.K1
+    if k2 is None:
+        k2 = const.K2
+    if k1 <= 0 or k2 <= 0:
+        raise ValueError("k1 and k2 must be positive")
+
+    u_star = (2.0 * k1 / k2) ** (1.0 / 6.0)
+    depth = -float(potential_function(u_star, k1, k2))
+    turning_point = (k1 / k2) ** (1.0 / 6.0)
+    return {"u_star": float(u_star), "depth": depth,
+            "turning_point": float(turning_point)}
+
+
+def crest_energy(amplitude, width, c=1.0, k1=None, k2=None):
+    """Energy per unit mass carried by the crest of the initial Gaussian.
+
+    The Gaussian pulse A*exp(-(x-x0)^2/(2 width^2)) lifted onto the well
+    floor u* stores energy in two exact, computable forms:
+
+    - well energy of the lifted crest:  V(u* + A) - V(u*)
+    - elastic energy of its steepest slope: the Gaussian's maximum gradient
+      is A*e^-0.5/width, so 1/2 c^2 (du/dx)^2 = 0.18394 * c^2 A^2 / width^2
+
+    Their sum, divided by the well depth, is the honest "can this pulse
+    exceed the well?" ratio: past 100% the crest nodes carry more than the
+    escape threshold, so wave focusing routinely slams them into the wall
+    (Mission 2 territory).
+
+    Returns a dict with ``well``, ``elastic``, ``total`` (all per unit mass)
+    and ``depth`` for convenience.
+    """
+    props = well_properties(k1, k2)
+    u_star = props["u_star"]
+    k1 = const.K1 if k1 is None else k1
+    k2 = const.K2 if k2 is None else k2
+
+    v_floor = potential_function(u_star, k1, k2)
+    well = float(potential_function(u_star + amplitude, k1, k2) - v_floor)
+    max_slope = amplitude * np.exp(-0.5) / width
+    elastic = 0.5 * c ** 2 * max_slope ** 2
+    return {"well": well, "elastic": float(elastic),
+            "total": well + float(elastic), "depth": props["depth"]}
 
 
 def check_cfl_condition(dt, dx, c):

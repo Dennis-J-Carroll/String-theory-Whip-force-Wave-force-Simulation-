@@ -35,6 +35,8 @@ register_preview(htmlPath="<workspace>/output/wave_report.html")
 ```
 
 The report is a single self-contained HTML file (JSON + canvas renderer,
+now carrying the same escape-analysis readout as the dashboard's PHYSICS
+card — see README "Interactive HTML report").
 works from `file://`), so it needs no server, port, or install.
 
 ## Reproduce the artifacts

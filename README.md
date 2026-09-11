@@ -53,6 +53,7 @@ This project implements a comprehensive numerical simulation of **classical wave
 
 ### Visualization & Analysis — DJC Design System
 - **Themed plots**: deep-navy canvas with teal/cyan glow lines, glass legends, and Orbitron headings — the same aesthetic as [dennisjcarroll.com](https://dennisjcarroll.com)
+- **Type stack matches the site**: Orbitron (display) · Space Grotesk (body) · Fira Code (mono) — loaded from Google Fonts in the dashboard and HTML report, bundled as matplotlib fonts for the static plots
 - **Equation footnotes**: every chart carries its governing equation (`∂²u/∂t² = c²∂²u/∂x² + F(u)`, `c = √(T/μ)`, the LJ force) with the actual constants substituted in, plus a green/red **CFL badge** (`c·dt/dx` vs the stability limit) — see `djc_theme.equation_footnote` / `cfl_badge`
 - **Signature colormaps**: `djc_wave` (teal → electric cyan), `djc_diverging` (violet / navy / cyan) and `djc_time` (slate past → glowing present) for wave evolution overlays
 - Wave evolution plots with customizable time steps
@@ -168,7 +169,8 @@ python playground.py
 ```
 - Sliders: tension, LJ well equilibrium u\*, well stiffness ω₀, damping, pulse amplitude
 - Live energy bars, probe-node sparkline, and an equation strip showing the actual constants in play (with a CFL stability badge)
-- Hotkeys: `space` pause · `r` reset · `s` export the probe signal as audio · `q` quit
+- **Elastic-vs-well split** (default on, toggle with the button or `w`): three bars — kinetic (violet), elastic strain (teal), well energy (amber) — plus a live "well share" readout. The lesson: elastic energy rides c², so raising tension grows the teal bar while the amber well bar doesn't move; crank tension and feel how wave speed changes what the pulse carries
+- Hotkeys: `space` pause · `r` reset · `s` export the probe signal as audio · `w` toggle elastic/well split · `q` quit
 - `python playground.py --selftest` renders a headless preview to `output/playground_preview.png`
 
 ### Sonification (hear the physics)
@@ -186,7 +188,16 @@ python sonify.py whip --no-play   # just export output/whip_crack.wav
 file (data as JSON, `<canvas>` renderer, zero dependencies, works from `file://`).
 Recipients can scrub time, play/pause, hover the wave for exact `(x, u, t)`
 readouts, and click/drag the space-time heatmap to extract the wavefront shape
-at any instant (shown as an amber ghost curve). Generate a standalone demo:
+at any instant (shown as an amber ghost curve).
+
+Runs driven by the calibrated LJ well also embed an **escape analysis** — the
+same well-depth vs crest-energy readout as the dashboard's PHYSICS card: the
+exact escape threshold (−V(u\*)), the pulse crest's energy split (well +
+elastic), an escape ratio with a 100 px color-coded bar (green bound / amber
+≥ 85 % near escape / red ≥ 100 % unbound), and a dotted amber `V = 0` threshold
+line on the wave chart. Force-free runs omit the panel entirely.
+
+Generate a standalone demo:
 ```bash
 python report.py --out output/wave_report.html
 ```

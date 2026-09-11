@@ -33,7 +33,7 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
 from solver import wave_solver, potential_function, force_function
-from solver import saved_frame_velocities
+from solver import saved_frame_velocities, well_properties, crest_energy
 from solver import WAVE_SCALE_K1, WAVE_SCALE_K2, WELL_U_STAR, WELL_OMEGA0
 from interactive_visualization import (
     create_animated_wave,
@@ -60,10 +60,16 @@ app.index_string = """
     <head>
         {%metas%}
         <title>DJC Wave Lab</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         {%css%}
         <style>
-            /* DJC surfaces over the CYBORG base */
-            body { background: #070e1a !important; }
+            /* DJC surfaces over the CYBORG base.
+               Type stack matches dennisjcarroll.com: Orbitron display,
+               Space Grotesk body, Fira Code mono (loaded above). */
+            body { background: #070e1a !important;
+                   font-family: 'Space Grotesk', sans-serif; }
             .bg-djc       { background: #0f1d31 !important; border: 1px solid #2b3f58 !important; }
             .card-header  { background: #14293f !important; color: #ecf4fb !important;
                             border-bottom: 1px solid #2b3f58 !important;
@@ -79,7 +85,7 @@ app.index_string = """
             .nav-link  { color: #b8c6d8 !important; }
             .nav-link.active { background: #0f1d31 !important; color: #3ef0e2 !important;
                                border-color: #2b3f58 !important; }
-            .cfl-badge { font-family: 'JetBrains Mono', monospace; font-size: .9rem; }
+            .cfl-badge { font-family: 'Fira Code', monospace; font-size: .9rem; }
             .cfl-ok    { color: #4ade80; }
             .cfl-bad   { color: #ff5d73; font-weight: 700; }
         </style>
@@ -157,6 +163,7 @@ app.layout = dbc.Container([
 
                     html.Hr(),
                     html.Div(id="well-info", className="text-djc-muted"),
+                    html.Div(id="escape-readout", className="mt-2"),
                 ]),
             ], className="bg-djc mb-3"),
 
@@ -198,9 +205,8 @@ app.layout = dbc.Container([
                         marks={1: "1", 2: "2", 3: "3", 4: "4"},
                         tooltip={"placement": "bottom"},
                     ),
-                    html.Small("measured from the well floor u* = 2 m — above "
-                               "~3 m the pulse can punch through the wall",
-                               className="text-djc-muted d-block mb-3"),
+                    html.Div(id="amplitude-warning",
+                             className="text-djc-muted d-block mb-3"),
 
                     html.Label("Center position (m)"),
                     dcc.Slider(
@@ -275,6 +281,62 @@ def update_well_info(offset):
         html.Span(f"u* = 2 m (equilibrium) · ω₀ ≈ {WELL_OMEGA0 * 10.0 ** (offset / 2):.2g} rad/s",
                   className="d-block"),
     ]
+
+
+@app.callback(
+    Output("escape-readout", "children"),
+    Output("amplitude-warning", "children"),
+    Output("amplitude-warning", "className"),
+    Input("k2-offset", "value"),
+    Input("amplitude-slider", "value"),
+    Input("width-slider", "value"),
+    Input("c-slider", "value"),
+)
+def update_escape_readout(offset, amplitude, width, c):
+    """Well depth vs crest energy — can the pulse escape the well?
+
+    Both numbers are exact properties of the initial condition (no
+    simulation): the well depth V(u_out) − V(u*) is the energy per unit
+    mass a node needs to reach the V = 0 crossing on the wall side, and
+    crest_energy() sums the lifted crest's well energy with the elastic
+    energy of its steepest slope.
+    """
+    scale = 10.0 ** offset
+    k1, k2 = WAVE_SCALE_K1 * scale, WAVE_SCALE_K2 * scale
+    props = well_properties(k1, k2)
+    crest = crest_energy(amplitude, width, c=c, k1=k1, k2=k2)
+
+    ratio = crest["total"] / props["depth"]
+    pct = 100.0 * ratio
+
+    # State machine: green bound / amber near escape / red unbound.
+    if ratio >= 1.0:
+        state_cls, icon = "text-danger fw-bold", "⚠"
+        verdict = "crest exceeds the well — wall slams and punch-through likely"
+    elif ratio >= 0.85:
+        state_cls, icon = "text-warning", "◆"
+        verdict = "near escape — wave focusing can still slam the wall"
+    else:
+        state_cls, icon = "text-success", "✓"
+        verdict = "bound — the well recaptures the crest"
+
+    readout = html.Div([
+        html.Span(f"well depth: {props['depth']:.3g} J/kg",
+                  className="d-block"),
+        html.Span(f"crest energy: {crest['total']:.3g} J/kg "
+                  f"({crest['well']:.3g} well + {crest['elastic']:.3g} elastic)",
+                  className="d-block"),
+        html.Span(f"{icon} escape ratio: {pct:.0f}% — {verdict}",
+                  className=f"d-block {state_cls}"),
+    ])
+
+    warning = (f"crest carries {pct:.0f}% of the escape energy — "
+               f"expect wall interaction" if ratio >= 0.85
+               else "measured from the well floor u* = 2 m")
+    warn_cls = ("text-warning d-block mb-3 small" if 0.85 <= ratio < 1.0
+                else "text-danger fw-bold d-block mb-3 small" if ratio >= 1.0
+                else "text-djc-muted d-block mb-3 small")
+    return readout, warning, warn_cls
 
 
 @app.callback(

@@ -62,12 +62,24 @@ def capture_run(
     energy_history: Optional[Sequence[tuple]] = None,
     cfl: float = None,
     subtitle: str = "Interactive simulation report",
+    k1: float = None,
+    k2: float = None,
+    pulse_amplitude: float = None,
+    pulse_width: float = None,
+    pulse_speed: float = 1.0,
 ) -> dict:
     """
     Package one solver run for the HTML renderer.
 
     ``frames`` is the displacement history (num_frames × num_points). Data is
     decimated to at most 120 frames × 400 columns and rounded to 5 decimals.
+
+    Pass ``k1``/``k2`` (the Lennard-Jones well constants) to embed the escape
+    analysis — well depth vs the crest energy of the initial Gaussian pulse
+    (``pulse_amplitude`` × ``pulse_width``, riding its steepest slope at wave
+    speed ``pulse_speed``). With a well but no pulse geometry, only the well
+    depth and the V = 0 crossing are embedded. Without a well the report
+    simply omits the panel (force-free runs stay clean).
     """
     u = np.asarray(frames, dtype=float)
     x = np.asarray(x, dtype=float)
@@ -92,6 +104,30 @@ def capture_run(
     }
     if cfl is not None:
         data["cfl"] = round(float(cfl), 3)
+
+    # Escape analysis — the same exact numbers the dashboard's PHYSICS card
+    # shows: well depth (the escape threshold) vs the crest energy of the
+    # initial Gaussian. Omitted entirely for force-free runs.
+    if k1 is not None and k2 is not None:
+        from solver import crest_energy, well_properties
+
+        props = well_properties(k1, k2)
+        well = {
+            "u_star": round(props["u_star"], 4),
+            "depth": float(props["depth"]),
+            "turning_point": round(props["turning_point"], 4),
+        }
+        if pulse_amplitude is not None and pulse_width is not None:
+            crest = crest_energy(pulse_amplitude, pulse_width,
+                                 c=pulse_speed, k1=k1, k2=k2)
+            well["crest"] = {
+                "well": round(crest["well"], 6),
+                "elastic": round(crest["elastic"], 6),
+                "total": round(crest["total"], 6),
+                "ratio": crest["total"] / props["depth"],
+            }
+        data["well"] = well
+
     if energy_history:
         e = np.asarray(energy_history[: len(t_s)], dtype=float)
         if e.ndim == 2 and e.shape[1] >= 3:
@@ -113,17 +149,24 @@ _HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <title>__TITLE__ — DJC Wave Report</title>
-<style>
-  :root { --bg:#070e1a; --surface:#0a1423; --raised:#0f1d31; --line:#223246;
+<style>  :root { --bg:#070e1a; --surface:#0a1423; --raised:#0f1d31; --line:#223246;
           --fg1:#ecf4fb; --fg2:#b8c6d8; --fg3:#7d92ab; --teal:#14b89a;
-          --cyan:#3ef0e2; --amber:#f4b840; --glass:rgba(20,41,63,.55); }
+          --cyan:#3ef0e2; --amber:#f4b840; --glass:rgba(20,41,63,.55);
+          --font-display:'Orbitron','Space Grotesk',sans-serif;
+          --font-sans:'Space Grotesk',system-ui,sans-serif;
+          --font-mono:'Fira Code',ui-monospace,monospace; }
+
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--fg2);
-         font:15px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif; padding:24px; }
-  .eyebrow { font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-             color:var(--teal); font-weight:600; }
-  h1 { color:var(--fg1); font-size:26px; margin:4px 0 2px; font-weight:700; }
+         font:15px/1.55 var(--font-sans); padding:24px; }
+  .eyebrow { font-family:var(--font-display); font-size:11px; letter-spacing:.14em;
+             text-transform:uppercase; color:var(--teal); font-weight:600; }
+  h1 { font-family:var(--font-display); color:var(--fg1); font-size:26px;
+       margin:4px 0 2px; font-weight:700; letter-spacing:.04em; }
   .sub { color:var(--fg3); font-size:13px; margin-bottom:18px; }
   .panel { background:var(--glass); border:1px solid rgba(124,180,200,.18);
            border-radius:12px; padding:14px; margin-bottom:16px; }
@@ -135,19 +178,26 @@ _HTML = """<!doctype html>
            border-radius:8px; padding:7px 18px; font-size:13px; cursor:pointer; }
   button:hover { border-color:var(--teal); color:var(--cyan); }
   input[type=range] { flex:1; min-width:200px; accent-color:var(--teal); height:26px; }
-  .tread { font:12px ui-monospace,monospace; color:var(--cyan); min-width:110px; }
+  .tread { font:12px var(--font-mono); color:var(--cyan); min-width:110px; }
   select { background:var(--raised); color:var(--fg2); border:1px solid var(--line);
            border-radius:8px; padding:6px; font-size:12px; }
   .hint { color:var(--fg3); font-size:12px; margin-top:8px; }
   #hover { position:fixed; pointer-events:none; display:none; z-index:9;
            background:rgba(10,20,35,.92); border:1px solid var(--line);
-           color:var(--fg1); font:11px ui-monospace,monospace;
+           color:var(--fg1); font:11px var(--font-mono);
            padding:5px 9px; border-radius:6px; white-space:nowrap; }
-  .badge { display:inline-block; font:11px ui-monospace,monospace; padding:2px 9px;
+  .badge { display:inline-block; font:11px var(--font-mono); padding:2px 9px;
            border-radius:6px; border:1px solid var(--line); margin-left:10px; }
   .ok { color:#4ade80; } .bad { color:#ff5d73; }
-  .eq { font:12px ui-monospace,monospace; color:var(--fg3); }
-  .ghostnote { color:var(--amber); font:12px ui-monospace,monospace; display:none; margin-top:8px; }
+  .eq { font:12px var(--font-mono); color:var(--fg3); }
+  .ghostnote { color:var(--amber); font:12px var(--font-mono); display:none; margin-top:8px; }
+  .esc { font:12px var(--font-mono); margin-top:7px; }
+  .esc .amber { color:var(--amber); }
+  .depthbar { height:8px; border-radius:4px; background:var(--raised); border:1px solid var(--line);
+              margin:9px 0 3px; position:relative; overflow:visible; }
+  .depthfill { position:absolute; top:0; bottom:0; left:0; border-radius:3px; }
+  .mark85 { position:absolute; top:-2px; bottom:-2px; left:85%; width:1px; background:rgba(236,244,251,.45); }
+  .wellhint b { color:var(--fg1); font-weight:600; }
 </style>
 </head>
 <body>
@@ -180,9 +230,17 @@ _HTML = """<!doctype html>
   </div>
 </div>
 
+<div class="panel" id="wellpanel" style="display:none">
+  <div class="eyebrow" style="margin-bottom:5px">◆ ESCAPE ANALYSIS — CAN THE PULSE LEAVE THE WELL?</div>
+  <div class="eq" id="wellline"></div>
+  <div class="esc" id="escverdict"></div>
+  <div class="hint" id="wellhint"></div>
+</div>
+
 <div class="panel">
   <div class="eq" id="eqline"></div>
   <div class="hint">Scrub below or drag on the heatmap; amber ghost = extracted wavefront.
+  The dotted amber line on the wave chart is the V = 0 escape threshold.
   Keyboard: ←/→ step · space play/pause. Single file, zero dependencies.</div>
 </div>
 
@@ -197,6 +255,44 @@ document.getElementById('subtitle').textContent = D.subtitle;
 const eq = document.getElementById('eqline');
 eq.innerHTML = '&part;&sup2;u/&part;t&sup2; = c&sup2; &part;&sup2;u/&part;x&sup2; + F(u)' +
   (D.cfl !== undefined ? ' &nbsp;<span class="badge '+(D.cfl<=1?'ok':'bad')+'">CFL = '+D.cfl.toFixed(2)+(D.cfl<=1?' OK':' UNSTABLE')+'</span>' : '');
+
+// Escape analysis — well depth vs the crest energy of the initial pulse.
+// Same exact numbers and thresholds as the dashboard's PHYSICS card:
+// green bound / amber ≥85% near escape / red ≥100% unbound.
+const fmtE = e => (e !== 0 && (Math.abs(e) >= 1000 || Math.abs(e) < 0.01))
+  ? e.toExponential(2) : parseFloat(e.toPrecision(3));
+const well = D.well || null;
+if (well) {
+  document.getElementById('wellpanel').style.display = 'block';
+  document.getElementById('wellline').innerHTML =
+    'V(u) = k<sub>1</sub>/u<sup>12</sup> &minus; k<sub>2</sub>/u<sup>6</sup> &nbsp;·&nbsp; ' +
+    'well depth <b style="color:var(--fg1)">' + fmtE(well.depth) + ' J/kg</b> &nbsp;·&nbsp; ' +
+    'u* = ' + well.u_star.toFixed(2) + ' m &nbsp;·&nbsp; ' +
+    'V = 0 at u = ' + well.turning_point.toFixed(2) + ' m (dotted amber line)';
+  const cr = well.crest;
+  if (cr) {
+    const pct = cr.ratio * 100;
+    const col = pct >= 100 ? '#ff5d73' : pct >= 85 ? '#f4b840' : '#4ade80';
+    const icon = pct >= 100 ? '⚠' : pct >= 85 ? '◆' : '✓';
+    const verdict = pct >= 100
+      ? 'crest exceeds the well — wall slams and punch-through likely'
+      : pct >= 85 ? 'near escape — wave focusing can still slam the wall'
+      : 'bound — the well recaptures the crest';
+    const bw = Math.max(0, Math.min(pct, 100));
+    document.getElementById('escverdict').innerHTML =
+      '<span style="color:' + col + '">' + icon + ' escape ratio: ' + pct.toFixed(0) + '% — ' + verdict + '</span>' +
+      '<div class="depthbar"><div class="depthfill" style="width:' + bw + '%;background:' + col + '"></div>' +
+      '<div class="mark85" title="85% — near-escape threshold"></div></div>';
+    document.getElementById('wellhint').innerHTML =
+      'crest of the initial pulse carries <b>' + fmtE(cr.total) + ' J/kg</b> ' +
+      '(' + fmtE(cr.well) + ' well + ' + fmtE(cr.elastic) + ' elastic) of the ' +
+      '<b>' + fmtE(well.depth) + ' J/kg</b> escape energy. Tick at 85% = near-escape threshold.';
+  } else {
+    document.getElementById('wellhint').innerHTML =
+      'Nodes carrying more than the depth reach the V = 0 crossing on the wall side — beyond it, ' +
+      'the 1/u<sup>12</sup> repulsion takes over. No pulse geometry embedded for this run.';
+  }
+}
 
 const wave = document.getElementById('wave'), heat = document.getElementById('heat');
 const wc = wave.getContext('2d'), hc = heat.getContext('2d');
@@ -232,6 +328,13 @@ function drawWave() {
     wc.beginPath(); wc.moveTo(PAD.l,y); wc.lineTo(W-PAD.r,y); wc.stroke(); }
   wc.strokeStyle='rgba(124,180,200,.28)';
   wc.beginPath(); wc.moveTo(PAD.l,py(0)); wc.lineTo(W-PAD.r,py(0)); wc.stroke();
+  if (D.well) {                       // V = 0 escape threshold on the wall side
+    const xe = px(D.well.turning_point);
+    wc.strokeStyle='rgba(244,184,64,.55)'; wc.setLineDash([5,4]); wc.lineWidth=1.2;
+    wc.beginPath(); wc.moveTo(xe,PAD.t); wc.lineTo(xe,H-PAD.b); wc.stroke(); wc.setLineDash([]);
+    wc.fillStyle='rgba(244,184,64,.8)'; wc.font='10px "Fira Code",monospace';
+    wc.fillText('V=0', xe+4, PAD.t+10);
+  }
   const row = D.u[frame];
   wc.strokeStyle=D.cyan; wc.lineWidth=2; wc.shadowColor=D.cyan; wc.shadowBlur=10;
   wc.beginPath();
@@ -249,9 +352,9 @@ function drawWave() {
     wc.beginPath(); wc.moveTo(px(D.x[hoverIx]),PAD.t); wc.lineTo(px(D.x[hoverIx]),H-PAD.b); wc.stroke();
     wc.setLineDash([]);
   }
-  wc.fillStyle='#ecf4fb'; wc.font='12px ui-monospace,monospace';
+  wc.fillStyle='#ecf4fb'; wc.font='12px "Fira Code",monospace';
   wc.fillText('t = '+D.t[frame].toFixed(3)+' s', PAD.l+8, PAD.t+14);
-  wc.fillStyle='#7d92ab'; wc.font='11px ui-monospace,monospace';
+  wc.fillStyle='#7d92ab'; wc.font='11px "Fira Code",monospace';
   wc.fillText('frame '+(frame+1)+'/'+NT, PAD.l+8, H-10);
 }
 

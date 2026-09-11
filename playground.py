@@ -4,13 +4,16 @@ The Playground — a live, playable wave simulator.
 One themed matplotlib window: the string animates continuously while sliders
 (tension, well equilibrium, well stiffness, damping, pulse amplitude) re-solve
 the system in real time on a small fast grid. Energy bars pulse with the
-exchange between kinetic and elastic energy, a probe sparkline traces a single
-node's motion, and a live equation strip shows the actual numbers in play —
-including a CFL badge that tells you how close you are to the stability edge.
+exchange between kinetic and elastic energy — split into elastic strain vs
+well energy (button or 'w') so you can feel how wave speed changes what the
+pulse carries: crank tension and the elastic share grows with c² while the
+well share ignores it. A probe sparkline traces a single node's motion, and a
+live equation strip shows the actual numbers in play — including a CFL badge
+that tells you how close you are to the stability edge.
 
 Hotkeys:  space = pause/resume · r = reset pulse · s = export sonification ·
-c = ride the CFL edge (dial → 1.00) · x = cross the edge (dial → 1.60) ·
-q = quit
+w = toggle elastic/well split · c = ride the CFL edge (dial → 1.00) ·
+x = cross the edge (dial → 1.60) · q = quit
 
 The Courant dial is the torture instrument: the sim auto-times itself at CFL
 0.8, but the dial lets you push dt past the stability limit on purpose. Below
@@ -27,6 +30,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pytest
 from matplotlib.widgets import Button, Slider
 
 import djc_theme as t
@@ -54,6 +58,23 @@ def calibrate(u_star: float, omega0: float):
     k2 = omega0**2 * u_star**8 / 36.0
     k1 = k2 * u_star**6 / 2.0
     return k1, k2
+
+
+def well_energy(u, density, dx, k1: float, k2: float, u_star: float) -> float:
+    """Energy stored against the Lennard-Jones well, in joules.
+
+    W(u) = k1/u^12 − k2/u^6 is the per-unit-mass potential whose gradient is
+    the solver's force term; the rest state u* contributes zero by subtracting
+    W(u*), so ∫μ·W dx is the conserved ledger's well term measured on absolute
+    displacement (no |u − u*| reflection — that is a different potential).
+    """
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        uu = np.maximum(np.asarray(u, dtype=float), 1e-6)
+        v = k1 / uu**12 - k2 / uu**6
+        v_rest = k1 / u_star**12 - k2 / u_star**6
+        integrand = np.asarray(density, dtype=float) * (v - v_rest)
+    integrand = np.nan_to_num(integrand, nan=0.0, posinf=1e9, neginf=0.0)
+    return float(np.trapz(integrand, dx=dx))
 
 
 def make_world(tension: float, u_star: float, omega0: float,
@@ -135,6 +156,7 @@ def run_playground(selftest: bool = False) -> None:
         state["detonated"] = False
         state["e0"] = s.get_total_energy()
         state["u_hist"], state["ke_hist"], state["pe_hist"] = [], [], []
+        state["w_hist"] = []
         state["v_probe_hist"], state["steps_done"] = [], 0
         state["u"], state["v"] = s.displacement.copy(), s.velocity.copy()
         k1, k2 = calibrate(sliders["Well equilibrium"].val, sliders["Well stiffness"].val)
@@ -153,11 +175,14 @@ def run_playground(selftest: bool = False) -> None:
     ax_wave.set_title("DJC WAVE PLAYGROUND", fontfamily=t.FONT_DISPLAY, fontsize=14, loc="left")
     t.glass_legend(ax_wave, loc="upper right", fontsize=8)
 
-    # Energy bars: kinetic vs elastic+well (potential), pulsing with the sim
-    bar_labels = ["Kinetic", "Potential"]
-    bars = ax_energy.barh([1, 0], [0.5, 0.5], height=0.55,
-                          color=[t.ACCENT.VIOLET, t.TEAL.N300], alpha=0.9)
-    ax_energy.set_yticks([1, 0], bar_labels, fontsize=9)
+    # Energy bars: kinetic / elastic strain / well. The elastic-vs-well
+    # split (button or 'w') is the lesson: elastic grows with tension (c²),
+    # the well term does not care about T at all.
+    state["split"] = True
+    bar_labels = ["Kinetic", "Elastic", "Well"]
+    bars = ax_energy.barh([2, 1, 0], [0.5, 0.5, 0.5], height=0.55,
+                          color=[t.ACCENT.VIOLET, t.TEAL.N300, t.ACCENT.AMBER], alpha=0.9)
+    ax_energy.set_yticks([2, 1, 0], bar_labels, fontsize=9)
     ax_energy.set_xlim(0, 1)
     ax_energy.set_xticks([])
     ax_energy.set_title("Energy exchange", fontfamily=t.FONT_DISPLAY, fontsize=11)
@@ -234,6 +259,23 @@ def run_playground(selftest: bool = False) -> None:
     btn_pause.on_clicked(toggle_pause)
     btn_reset.on_clicked(reset)
 
+    # Split toggle — three bars (kinetic / elastic / well) or the classic
+    # merged two-bar view. Default ON: the split is the teaching view.
+    bax_split = fig.add_axes([0.80, 0.290, 0.16, 0.036])
+    btn_split = Button(bax_split, "Elastic | Well", hovercolor="0.85")
+    btn_split.label.set_color(t.FG_1)
+    btn_split.label.set_fontsize(9)
+    bax_split.set_facecolor(t.NAVY.N700)
+    for spine in bax_split.spines.values():
+        spine.set_color("#223246")
+
+    def toggle_split(_):
+        state["split"] = not state["split"]
+        btn_split.label.set_text("KE + PE merged" if state["split"] else "Elastic | Well")
+        fig.canvas.draw_idle()
+
+    btn_split.on_clicked(toggle_split)
+
     # --- Live equation strip (bottom band) ----------------------------------
     # The governing PDE with the actual current constants substituted in.
     # Mathtext is re-rendered only when a slider moves, never per frame.
@@ -257,6 +299,12 @@ def run_playground(selftest: bool = False) -> None:
             "\n"
             r"$\mathrm{wave\ equation}\;+\;$Lennard-Jones well (equilibrium "
             f"u* = {sliders['Well equilibrium'].val:.2f} m, stiffness $\\omega_0$ = {sliders['Well stiffness'].val:.1f} rad/s)"
+            + (
+                "\n"
+                "split view — the elastic bar scales with T (it rides c²): raise Tension and it outruns the amber well bar,\n"
+                "whose energy depends only on k₁, k₂, u*. Toggle: button or 'w'."
+                if state["split"] else ""
+            )
         )
         fig.canvas.draw_idle()
 
@@ -276,6 +324,8 @@ def run_playground(selftest: bool = False) -> None:
             plt.close(fig)
         elif event.key == "s":
             export_sonification()
+        elif event.key == "w":
+            toggle_split(None)
         elif event.key == "c":
             # Ride the stability edge: CFL = 1.0 is marginal for the wave
             # equation — noise neither grows nor decays.
@@ -318,12 +368,15 @@ def run_playground(selftest: bool = False) -> None:
                 if state["steps_done"] % 4 == 0:
                     ke = s.get_kinetic_energy()
                     pe = s.get_potential_energy()
+                    we = well_energy(u, s.density, s.dx, state["k1"], state["k2"],
+                                     sliders["Well equilibrium"].val)
                     state["u_hist"].append(u.copy())
                     state["ke_hist"].append(ke)
                     state["pe_hist"].append(pe)
+                    state["w_hist"].append(we)
                     state["v_probe_hist"].append(v[PROBE_INDEX])
                     if len(state["u_hist"]) > BUFFER_STEPS:
-                        for key in ("u_hist", "ke_hist", "pe_hist", "v_probe_hist"):
+                        for key in ("u_hist", "ke_hist", "pe_hist", "w_hist", "v_probe_hist"):
                             state[key].pop(0)
             state["u"], state["v"] = u, v
 
@@ -336,10 +389,20 @@ def run_playground(selftest: bool = False) -> None:
             ax_wave.set_ylim(min(u_now.min(), u_floor) - 0.4,
                              max(u_now.max(), u_floor) + 0.8)
 
-            ke, pe = state["ke_hist"][-1], state["pe_hist"][-1]
-            scale = max(ke + pe, 1e-9)
-            bars[0].set_width(min(ke / scale, 1.0))
-            bars[1].set_width(min(pe / scale, 1.0))
+            ke, pe_el = state["ke_hist"][-1], state["pe_hist"][-1]
+            we = state["w_hist"][-1] if state["w_hist"] else 0.0
+            if state["split"]:
+                scale = max(ke + pe_el + we, 1e-9)
+                bars[0].set_width(min(ke / scale, 1.0))
+                bars[1].set_width(min(pe_el / scale, 1.0))
+                # Escape dips put the well ledger briefly negative (energy
+                # handed back); clamp so the bar reads zero, not negative.
+                bars[2].set_width(min(max(we, 0.0) / scale, 1.0))
+            else:
+                scale = max(ke + pe_el, 1e-9)
+                bars[0].set_width(min(ke / scale, 1.0))
+                bars[1].set_width(min(pe_el / scale, 1.0))
+                bars[2].set_width(0.0)
 
             vp = state["v_probe_hist"]
             probe_line.set_data(np.arange(len(vp)), vp)
@@ -371,6 +434,7 @@ def run_playground(selftest: bool = False) -> None:
                     f"dt = {state['dt']*1000:6.2f} ms\n"
                     f"Courant {courant:5.2f} {'OK' if courant <= 1.0 else 'UNSTABLE'}\n"
                     f"dE = {d_e*100:+7.2f}%{d_e_flag}\n"
+                    f"well share = {100*we/max(ke + pe_el + we, 1e-9):5.1f}%\n"
                     f"u* = {sliders['Well equilibrium'].val:4.2f} m\n"
                     f"steps = {state['steps_done']}"
                 )
@@ -404,6 +468,27 @@ def run_playground(selftest: bool = False) -> None:
         assert not state.get("detonated", False) and np.all(np.isfinite(state["u"])), \
             "sim did not recover after dialing Courant back"
         print(t.success("recovery confirmed after dialing back to CFL 0.8"))
+
+        # Act 3 — the energy-split lesson: elastic strain scales with tension
+        # (it rides c²), while the well term depends only on k₁, k₂, u*.
+        # This is why the toggle exists: wave speed changes what a pulse
+        # carries, and the bars must prove it.
+        def _ledger(tension_value):
+            s, _solver, _dt = make_world(tension=tension_value, u_star=2.0,
+                                         omega0=5.0, damping=0.0, pulse_amp=0.5)
+            pe = s.get_potential_energy()
+            we = well_energy(s.displacement, s.density, s.dx,
+                             *calibrate(2.0, 5.0), u_star=2.0)
+            return pe, we
+
+        pe_lo, we_lo = _ledger(60.0)
+        pe_hi, we_hi = _ledger(180.0)
+        assert we_hi == pytest.approx(we_lo, abs=1e-9), \
+            "well energy must not depend on tension"
+        assert pe_hi / pe_lo == pytest.approx(180.0 / 60.0, rel=1e-6), \
+            "elastic energy must scale exactly with T"
+        assert state["split"] and bars[2].get_width() >= 0.0
+        print(t.success("energy split verified: elastic ∝ T, well tension-free"))
 
         plt.close(fig)
         return

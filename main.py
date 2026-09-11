@@ -57,8 +57,10 @@ def run_basic_simulation() -> None:
 
     # Set initial conditions: LJ equilibrium background + a Gaussian
     # disturbance, so the wave-force term acts as an anharmonic well.
+    pulse_amplitude, pulse_width = 0.5, 5.0
     string.set_initial_custom(
-        displacement_func=lambda x: U_STAR + 0.5 * np.exp(-((x - 25.0) ** 2) / (2 * 5.0**2)),
+        displacement_func=lambda x: U_STAR
+        + pulse_amplitude * np.exp(-((x - 25.0) ** 2) / (2 * pulse_width**2)),
     )
 
     # Create solver with the calibrated wave-force constants. Velocity Verlet
@@ -124,6 +126,9 @@ def run_basic_simulation() -> None:
         energy_history=solver.energy_history,
         cfl=_cfl_of(string, 0.001),
         subtitle="Velocity-Verlet · LJ well (u* = 2 m, ω₀ = 5 rad/s) · scrub, hover, click the heatmap",
+        k1=K1_CAL, k2=K2_CAL,
+        pulse_amplitude=pulse_amplitude, pulse_width=pulse_width,
+        pulse_speed=string.get_max_wave_speed(),
     )
     report.write_report(data, f"{OUT_DIR}/wave_report.html")
 
