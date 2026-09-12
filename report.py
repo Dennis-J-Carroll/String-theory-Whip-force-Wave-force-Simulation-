@@ -207,7 +207,7 @@ _HTML = """<!doctype html>
 
 <div class="panel">
   <div id="controls">
-    <button id="play">▶ Play</button>
+    <button id="play"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-1px"><path d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg> Play</button>
     <input type="range" id="scrub" min="0" value="0" step="1">
     <span class="tread" id="tread"></span>
     <select id="speed">
@@ -273,7 +273,12 @@ if (well) {
   if (cr) {
     const pct = cr.ratio * 100;
     const col = pct >= 100 ? '#ff5d73' : pct >= 85 ? '#f4b840' : '#4ade80';
-    const icon = pct >= 100 ? '⚠' : pct >= 85 ? '◆' : '✓';
+    const svg = (body, c) => '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="' + c + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px">' + body + '</svg>';
+    const icon = pct >= 100
+      ? svg('<path d="M12 3.5L22 20H2z"/><path d="M12 9.5v5" stroke-width="2.4"/><circle cx="12" cy="17.5" r="0.6" fill="' + col + '" stroke="none"/>', col)
+      : pct >= 85
+      ? svg('<path d="M12 3l7.5 9-7.5 9-7.5-9z" fill="' + col + '" stroke="none" opacity=".9"/>', col)
+      : svg('<path d="M4 12.5l5.5 5.5L20 6.5"/>', col);
     const verdict = pct >= 100
       ? 'crest exceeds the well — wall slams and punch-through likely'
       : pct >= 85 ? 'near escape — wave focusing can still slam the wall'
@@ -402,7 +407,9 @@ function setFrame(i, ghostAt) {
 
 function setPlaying(p) {
   playing = p;
-  document.getElementById('play').textContent = p ? '❚❚ Pause' : '▶ Play';
+  document.getElementById('play').innerHTML = p
+    ? '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-1px"><rect x="6" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1.2" fill="currentColor"/></svg> Pause'
+    : '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-1px"><path d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg> Play';
   if (timer) { clearInterval(timer); timer = null; }
   if (p) timer = setInterval(() => setFrame((frame+1) % NT), +document.getElementById('speed').value);
 }

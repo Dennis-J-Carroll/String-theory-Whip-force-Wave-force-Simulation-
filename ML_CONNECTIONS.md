@@ -4,7 +4,7 @@
 
 ---
 
-## 🎯 The Core Philosophy
+## The Core Philosophy
 
 > **"The laws of physics provide principled frameworks for understanding computation."**
 
@@ -19,7 +19,7 @@ This document makes **explicit connections** between the physics concepts in thi
 
 ---
 
-## 📐 The Mathematics: Physics ↔ ML
+## The Mathematics: Physics ↔ ML
 
 ### Wave Equation in This Simulation
 
@@ -54,7 +54,7 @@ Where:
 
 ---
 
-## 🌊 Connection 1: Wave Propagation → Information Flow
+## Connection 1: Wave Propagation → Information Flow
 
 ### From the Simulation
 
@@ -126,7 +126,7 @@ class WaveInspiredResidualBlock(nn.Module):
 
 ---
 
-## ⚡ Connection 2: Energy Conservation → Training Stability
+## Connection 2: Energy Conservation → Training Stability
 
 ### From the Simulation
 
@@ -156,7 +156,7 @@ From `solver.py`, we check CFL stability condition:
 max_wave_speed = np.max(string.wave_speed)
 cfl = max_wave_speed * dt / dx
 if cfl > 1.0:
-    print(f"⚠️  CFL condition violated: {cfl:.3f} > 1.0")
+    print(f" CFL condition violated: {cfl:.3f} > 1.0")
 ```
 
 ### ML Analog: Loss Landscapes and Gradient Norms
@@ -179,11 +179,11 @@ def check_training_stability(loss_history, grad_norms):
     max_increase = np.max(loss_changes)
 
     if max_increase > 0.1 * np.mean(loss_history):
-        print("⚠️  Training instability: sudden loss increase")
+        print(" Training instability: sudden loss increase")
 
     # Check gradient norm bounds (like CFL condition)
     if np.max(grad_norms) > 10 * np.median(grad_norms):
-        print("⚠️  Gradient explosion detected")
+        print(" Gradient explosion detected")
 ```
 
 ### The CFL Condition → Adaptive Learning Rates
@@ -221,7 +221,7 @@ When ML training shows **loss oscillation**, it signals the same!
 
 ---
 
-## 🎨 Connection 3: Energy Density → Attention Mechanisms
+## Connection 3: Energy Density → Attention Mechanisms
 
 ### From the Simulation
 
@@ -301,7 +301,7 @@ class EnergyBasedAttention(nn.Module):
 
 ---
 
-## 🌀 Connection 4: Interference Patterns → Multi-Head Attention
+## Connection 4: Interference Patterns → Multi-Head Attention
 
 ### From the Simulation
 
@@ -380,7 +380,7 @@ def visualize_attention_interference(attention_heads):
 
 ---
 
-## 🎯 Connection 5: Resonance Modes → Feature Learning
+## Connection 5: Resonance Modes → Feature Learning
 
 ### From the Simulation
 
@@ -473,7 +473,7 @@ def compute_feature_importance(feature_activations):
 
 ---
 
-## 🔄 Connection 6: Boundary Conditions → Inductive Biases
+## Connection 6: Boundary Conditions → Inductive Biases
 
 ### From the Simulation
 
@@ -526,7 +526,7 @@ class CircularConv2d(nn.Module):
 
 ---
 
-## 🧪 Connection 7: Numerical Integration → Optimization Algorithms
+## Connection 7: Numerical Integration → Optimization Algorithms
 
 ### From the Simulation
 
@@ -600,7 +600,7 @@ def check_optimizer_health(loss_history, epsilon=1e-3):
 
 ---
 
-## 🔬 Connection 8: Observable Quantities → Interpretability
+## Connection 8: Observable Quantities → Interpretability
 
 ### From the Simulation
 
@@ -668,7 +668,7 @@ def plot_attention_density(attention_weights, save_path):
 
 ---
 
-## 🚀 From This Simulation to My Research
+## From This Simulation to My Research
 
 This wave simulation directly informs my ML research:
 
@@ -722,7 +722,7 @@ This wave simulation directly informs my ML research:
 
 ---
 
-## 💡 Key Takeaways
+## Key Takeaways
 
 ### The Pattern
 
@@ -747,7 +747,7 @@ This wave simulation directly informs my ML research:
 
 ---
 
-## 🎓 For Fellowship Applications
+## For Fellowship Applications
 
 This work shows:
 
@@ -763,7 +763,7 @@ This work shows:
 
 ---
 
-## 📚 Further Reading
+## Further Reading
 
 ### Physics-Informed ML
 - Physics-Informed Neural Networks (PINNs)

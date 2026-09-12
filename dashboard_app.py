@@ -35,15 +35,40 @@ import plotly.graph_objects as go
 from solver import wave_solver, potential_function, force_function
 from solver import saved_frame_velocities, well_properties, crest_energy
 from solver import WAVE_SCALE_K1, WAVE_SCALE_K2, WELL_U_STAR, WELL_OMEGA0
+from pluck import pluck_displacement
+from regimes import escape_landscape, stability_landscape
 from interactive_visualization import (
     create_animated_wave,
     create_3d_wave_surface,
     create_interactive_potential_force,
     create_energy_monitor,
     create_phase_space,
+    create_escape_landscape,
+    create_stability_landscape,
 )
 
 import djc_plotly as P
+import djc_icons as _svg
+
+
+def _icon(name, size=13, color=None):
+    """Inline SVG icon as a Dash component tree (emoji-free UI)."""
+    return _svg.dash_icon(name, size=size, color=color or _svg.CYAN)
+
+
+def pluck_mode_hint(mode):
+    """One-line pointer hint under the pluck/draw radio, with its icon."""
+    if mode == "draw":
+        return html.Small([
+            _icon("draw", color=_svg.SLATE),
+            "draw mode — drag on the wave chart to sketch a shape "
+            "(the drag is your pen), then press RUN",
+        ], className="text-djc-muted")
+    return html.Small([
+        _icon("pluck", color=_svg.SLATE),
+        "pluck mode — click the string anywhere to displace it there "
+        "and watch it evolve (drag still zooms)",
+    ], className="text-djc-muted")
 
 # ============================================================================
 # App shell — the DJC dark surfaces, expressed in Bootstrap classes
@@ -103,6 +128,54 @@ app.index_string = """
 
 GRID = P.GRID
 
+# Shared graph config — the wave tab relies on plain clicks firing
+# clickData for the pluck (drag still zooms: the two gestures coexist).
+GRAPH_CONFIG = {"displaylogo": False}
+
+
+def _pluck_hit_traces(x_range=(0, 50), y_range=(-1.0, 4.5)):
+    """Invisible marker lattice so ANY canvas click fires plotly_click.
+
+    Plotly only emits click events near trace data — a bare axes canvas
+    (or a chart whose trace is a thin line) swallows clicks that land in
+    open space. A dense opacity-0 lattice gives every click a nearby
+    point; it renders nothing and never enters the legend.
+    """
+    gx = np.arange(x_range[0], x_range[1] + 0.5, 0.5)
+    gy = np.arange(y_range[0], y_range[1] + 0.001, 0.25)
+    X, Y = np.meshgrid(gx, gy)
+    return go.Scatter(
+        x=X.ravel(), y=Y.ravel(), mode="markers",
+        marker=dict(opacity=0, size=8, color=P.GRID),
+        # "none" keeps the point hover/click-participating (no label);
+        # "skip" would remove it from Plotly's hit-testing entirely.
+        hoverinfo="none", showlegend=False, name="hit-grid",
+    )
+
+
+def _empty_wave_graph():
+    """The Wave tab's pre-RUN state: an empty stage inviting a pluck.
+
+    Rendered statically in the layout (so the pluck callback's Input
+    exists the moment the page loads — no wiring errors) and reused by
+    the tab renderer whenever there is no sim data yet.
+    """
+    fig = go.Figure()
+    fig.add_trace(_pluck_hit_traces())
+    fig.add_hline(y=WELL_U_STAR, line=dict(color=P.GRID, dash="dot"))
+    fig.update_layout(
+        template=P.TEMPLATE,
+        title="Click anywhere on the string to pluck it — "
+              "or set parameters and RUN",
+        xaxis=dict(range=[0, 50], title="x (m)"),
+        yaxis=dict(range=[-1, 4.5], title="u (m)"),
+        height=600,
+    )
+    return dcc.Graph(figure=fig,
+                     id="wave-graph",
+                     config=GRAPH_CONFIG,
+                     style={"height": "600px"})
+
 # ============================================================================
 # CFL plumbing — the badge drives the dt slider, like the playground dial
 # ============================================================================
@@ -124,6 +197,7 @@ def cfl_ratio(c: float, dt: float, dx: float) -> float:
 app.layout = dbc.Container([
     dcc.Store(id="simulation-data"),
     dcc.Store(id="sim-params", data={}),   # remembers the last run's params
+    dcc.Store(id="store-drawn", data=None),  # freehand shape waiting for RUN
 
     dbc.Row([
         dbc.Col([
@@ -208,6 +282,22 @@ app.layout = dbc.Container([
                     html.Div(id="amplitude-warning",
                              className="text-djc-muted d-block mb-3"),
 
+                    dbc.RadioItems(
+                        id="pluck-mode",
+                        options=[
+                            {"label": html.Span([_icon("pluck"), " pluck"]),
+                             "value": "pluck"},
+                            {"label": html.Span([_icon("draw"), " draw"]),
+                             "value": "draw"},
+                        ],
+                        value="pluck",
+                        inline=True,
+                        className="mb-1",
+                    ),
+                    html.Div(id="pluck-mode-banner",
+                             children=pluck_mode_hint("pluck")),
+
+                    html.Hr(),
                     html.Label("Center position (m)"),
                     dcc.Slider(
                         id="center-slider", min=10, max=40, step=1, value=25,
@@ -238,9 +328,12 @@ app.layout = dbc.Container([
                 dbc.Tab(label="Energy", tab_id="tab-energy"),
                 dbc.Tab(label="Phase Space", tab_id="tab-phase"),
                 dbc.Tab(label="Potential & Force", tab_id="tab-potential"),
+                dbc.Tab(label="Landscapes", tab_id="tab-landscapes"),
             ], id="tabs", active_tab="tab-animation", className="mb-2"),
 
-            html.Div(id="tab-content", className="mt-3"),
+            html.Div(id="tab-content",
+                     children=[_empty_wave_graph()],
+                     className="mt-3"),
         ], width=12, lg=9),
     ]),
 ], fluid=True, className="p-4")
@@ -310,14 +403,15 @@ def update_escape_readout(offset, amplitude, width, c):
     pct = 100.0 * ratio
 
     # State machine: green bound / amber near escape / red unbound.
+    # Icons are inline SVGs (see djc_icons) — no emoji in the UI.
     if ratio >= 1.0:
-        state_cls, icon = "text-danger fw-bold", "⚠"
+        state_cls, icon = "text-danger fw-bold", _icon("warn", color=_svg.RED)
         verdict = "crest exceeds the well — wall slams and punch-through likely"
     elif ratio >= 0.85:
-        state_cls, icon = "text-warning", "◆"
+        state_cls, icon = "text-warning", _icon("diamond", color=_svg.AMBER)
         verdict = "near escape — wave focusing can still slam the wall"
     else:
-        state_cls, icon = "text-success", "✓"
+        state_cls, icon = "text-success", _icon("check", color=_svg.GREEN)
         verdict = "bound — the well recaptures the crest"
 
     readout = html.Div([
@@ -326,7 +420,7 @@ def update_escape_readout(offset, amplitude, width, c):
         html.Span(f"crest energy: {crest['total']:.3g} J/kg "
                   f"({crest['well']:.3g} well + {crest['elastic']:.3g} elastic)",
                   className="d-block"),
-        html.Span(f"{icon} escape ratio: {pct:.0f}% — {verdict}",
+        html.Span([icon, f" escape ratio: {pct:.0f}% — {verdict}"],
                   className=f"d-block {state_cls}"),
     ])
 
@@ -351,21 +445,38 @@ def update_escape_readout(offset, amplitude, width, c):
      State("time-slider", "value"),
      State("amplitude-slider", "value"),
      State("center-slider", "value"),
-     State("width-slider", "value")],
+     State("width-slider", "value"),
+     State("store-drawn", "data")],
     prevent_initial_call=True,
 )
 def run_simulation(n_clicks, k2_offset, c, dt_frac, dx, total_time,
-                   amplitude, center, width):
+                   amplitude, center, width, drawn):
     """Run the simulation with the current parameter values."""
     if n_clicks is None:
         return None, "", {}
+    label = "Simulation complete"
+    if drawn and drawn.get("bumps"):
+        label += " — with drawn shape"
+    return _solve_and_pack(k2_offset, c, dt_frac, dx, total_time,
+                           amplitude, center, width, label, drawn=drawn)
 
+
+def _solve_and_pack(k2_offset, c, dt_frac, dx, total_time,
+                    amplitude, center, width, label, drawn=None):
+    """The one solver path every entry point shares.
+
+    RUN button, click-to-pluck, and freehand-drawn shapes all funnel
+    through here, so the CFL guard, the calibrated well, the conserved
+    energy ledger, and the escape story apply identically no matter how
+    the initial condition was born. ``amplitude`` may be negative (a
+    pluck *below* the floor is a real, physical inverted pulse).
+    """
     dt = dt_frac * cfl_limit(c, dx)
     ratio = cfl_ratio(c, dt, dx)
     if ratio > 1.0:
         status = dbc.Alert(
-            f"✗ CFL condition violated: c·dt/dx = {ratio:.2f} > 1 — the grid "
-            f"would detonate. Pull dt below {1.0:.1f}× (playground rules).",
+            [f"CFL condition violated: c·dt/dx = {ratio:.2f} > 1 — the grid "
+             f"would detonate. Pull dt below {1.0:.1f}× (playground rules)."],
             color="danger",
         )
         return None, status, {}
@@ -381,6 +492,11 @@ def run_simulation(n_clicks, k2_offset, c, dt_frac, dx, total_time,
         K2 = WAVE_SCALE_K2 * scale
 
         u0 = amplitude * np.exp(-((x - center) ** 2) / (2 * width ** 2))
+        if drawn:
+            # Freehand bumps (draw mode) ride on top of the base pulse.
+            for bump in drawn.get("bumps", []):
+                u0 = u0 + bump["amp"] * np.exp(
+                    -0.5 * ((x - bump["center"]) / bump["width"]) ** 2)
         u0_prev = u0.copy()  # rest start
 
         u_history, time_points, v_history = wave_solver(
@@ -423,16 +539,67 @@ def run_simulation(n_clicks, k2_offset, c, dt_frac, dx, total_time,
 
         # Honest status: warn when the frame count was too big to be useful
         status = dbc.Alert(
-            f"✓ Simulation complete — {len(time_points)} frames "
-            f"(dt = {dt:.4g} s, CFL = {ratio:.2f})",
+            [_icon("check", color=_svg.GREEN),
+             f" {label} — {len(time_points)} frames "
+             f"(dt = {dt:.4g} s, CFL = {ratio:.2f})"],
             color="success",
         )
         params = {"K1": float(K1), "K2": float(K2), "k2_offset": k2_offset}
         return data, status, params
 
     except Exception as exc:  # keep the dashboard alive, surface the error
-        status = dbc.Alert(f"✗ Error: {exc}", color="danger")
+        status = dbc.Alert(
+            [_icon("cross", color=_svg.RED), f" Error: {exc}"],
+            color="danger",
+        )
         return None, status, {}
+
+
+@app.callback(
+    [Output("simulation-data", "data", allow_duplicate=True),
+     Output("status-message", "children", allow_duplicate=True),
+     Output("sim-params", "data", allow_duplicate=True)],
+    Input("wave-graph", "clickData"),
+    [State("k2-offset", "value"),
+     State("c-slider", "value"),
+     State("dt-frac", "value"),
+     State("dx-slider", "value"),
+     State("time-slider", "value"),
+     State("width-slider", "value")],
+    prevent_initial_call=True,
+)
+def pluck_from_click(click_data, k2_offset, c, dt_frac, dx, total_time,
+                     width):
+    """Click anywhere on the string → Gaussian pluck there, solved live.
+
+    The clicked y is the pluck amplitude (signed — you can pluck below the
+    floor); the clicked x is the pluck center. Everything downstream is
+    the exact RUN path, so CFL, the energy ledger, and the escape story
+    all apply to a plucked run for free.
+    """
+    if not click_data or "points" not in click_data:
+        return None, "", {}
+    point = click_data["points"][0]
+    click_x, click_y = float(point["x"]), float(point.get("y") or 0.0)
+
+    # Pluck amplitude from the pointer, sanity-clamped; σ follows the
+    # width slider so the finger's pluck matches the slider's story.
+    amp = float(np.clip(click_y - WELL_U_STAR, -4.0, 4.0))
+    if abs(amp) < 0.05:
+        amp = 1.0  # clicked the flat floor — give them a real pluck
+
+    label = f"Plucked at x = {click_x:.1f} m (A = {amp:+.2f} m)"
+    return _solve_and_pack(k2_offset, c, dt_frac, dx, total_time,
+                           amp, click_x, width, label)
+
+
+@app.callback(
+    Output("pluck-mode-banner", "children"),
+    Input("pluck-mode", "value"),
+)
+def pluck_mode_banner(mode):
+    """A one-line hint of what the pointer currently does."""
+    return pluck_mode_hint(mode)
 
 
 @app.callback(
@@ -443,6 +610,9 @@ def run_simulation(n_clicks, k2_offset, c, dt_frac, dx, total_time,
 )
 def render_tab_content(active_tab, sim_data, params):
     """Render the appropriate visualization based on selected tab."""
+    if active_tab == "tab-landscapes":
+        return _render_landscapes(params)
+
     if active_tab == "tab-potential":
         # Potential/force view needs no simulation — but it does want the
         # K1/K2 currently selected, falling back to the calibration.
@@ -464,9 +634,14 @@ def render_tab_content(active_tab, sim_data, params):
                          config={"displaylogo": False},
                          style={"height": "600px"})
 
+    if active_tab == "tab-animation" and sim_data is None:
+        # No sim yet — keep inviting the pointer.
+        return _empty_wave_graph()
+
     if sim_data is None:
         return dbc.Alert(
-            "👈 Set your parameters and hit RUN SIMULATION",
+            ["Set your parameters and hit RUN SIMULATION — or switch to "
+             "the Wave tab and click the string directly."],
             color="info",
         )
 
@@ -481,8 +656,11 @@ def render_tab_content(active_tab, sim_data, params):
         step = max(1, len(u_history) // 120)
         fig = create_animated_wave(x, u_history[::step], time_points[::step],
                                    baseline=WELL_U_STAR)
+        # Keep the whole canvas pluckable after a run, too.
+        fig.add_trace(_pluck_hit_traces())
         return dcc.Graph(figure=fig,
-                         config={"displaylogo": False},
+                         id="wave-graph",
+                         config=GRAPH_CONFIG,
                          style={"height": "600px"})
 
     if active_tab == "tab-3d":
@@ -512,6 +690,81 @@ def render_tab_content(active_tab, sim_data, params):
                          style={"height": "600px"})
 
     return html.Div("Select a tab to view a visualization")
+
+
+@app.callback(
+    Output("store-drawn", "data"),
+    Input("wave-graph", "relayoutData"),
+    State("store-drawn", "data"),
+    State("pluck-mode", "value"),
+    prevent_initial_call=True,
+)
+def capture_drawn_shape(relayout, existing, mode):
+    """Rasterize a drag-drawn pen path while in draw mode.
+
+    Plotly has no freehand pen, so draw mode repurposes box-select: the
+    box's span becomes a raised bump between its corners. Clicks that are
+    pure zooms/pan (xaxis.range changes etc.) pass through untouched.
+    """
+    if mode != "draw" or not relayout:
+        return existing  # draw signal only when a selection arrives
+    if "selections" in relayout and relayout["selections"]:
+        sel = relayout["selections"][-1]
+        try:
+            x0, x1 = float(sel["x0"]), float(sel["x1"])
+            y0, y1 = float(sel["y0"]), float(sel["y1"])
+        except (KeyError, TypeError, ValueError):
+            return existing
+        if x1 < x0:
+            x0, x1 = x1, x0
+        amp = float(np.clip(y1 - WELL_U_STAR, -4.0, 4.0))
+        if abs(amp) < 0.05:
+            amp = 1.0
+        center, width = 0.5 * (x0 + x1), max(0.2, 0.5 * (x1 - x0))
+        drawn = {"center": center, "width": width, "amp": amp}
+        return {"bumps": [drawn]}
+    return existing
+
+
+def _render_landscapes(params):
+    """The Landscapes tab: two regime maps, drawn from cached sweeps."""
+    offset = (params or {}).get("k2_offset", 0.0)
+    scale = 10.0 ** offset
+    K1, K2 = WAVE_SCALE_K1 * scale, WAVE_SCALE_K2 * scale
+
+    # Landscape 1 is pure analytics — instant on every visit.
+    esc = escape_landscape(k1=K1, k2=K2)
+    escape_fig = create_escape_landscape(
+        esc["ratio"], esc["axes"]["amplitude"], esc["axes"]["width"],
+        esc["depth"],
+        title=f"Escape landscape — well depth {esc['depth']:.3g} J/kg; "
+              f"dotted amber = ratio 1 (punch-through boundary)")
+
+    # Landscape 2 runs real short sims across the grid; keep the coarse
+    # default so the tab stays responsive (a few seconds, parallel).
+    try:
+        stab = stability_landscape(n=9)
+        stab_fig = create_stability_landscape(
+            stab["drift"], stab["axes"]["dt_frac"], stab["axes"]["dx"])
+        stability_block = dcc.Graph(figure=stab_fig,
+                                    config={"displaylogo": False},
+                                    style={"height": "560px"})
+    except Exception as exc:
+        stability_block = dbc.Alert(
+            f"stability sweep failed: {exc}", color="warning")
+
+    return html.Div([
+        dcc.Graph(figure=escape_fig, config={"displaylogo": False},
+                  style={"height": "560px"}),
+        html.P("Above the dotted line the initial crest already carries "
+               "more energy than the well depth — Mission 2's punch-through "
+               "regime. Below it, the well recaptures the crest.",
+               className="text-djc-muted"),
+        stability_block,
+        html.P("dt past the CFL limit (1.0×) lights up: the explicit scheme "
+               "detonates exactly where the Courant number exceeds one, "
+               "independent of dx.", className="text-djc-muted"),
+    ])
 
 
 if __name__ == "__main__":

@@ -403,6 +403,65 @@ def create_phase_space(position: np.ndarray,
 # 6. Comprehensive dashboard layout
 # ============================================================================
 
+def create_escape_landscape(ratio, amplitudes, widths, depth,
+                            title="Escape landscape — ratio ≥ 1 means the crest can leave the well"):
+    """Themed heatmap of the escape ratio over (amplitude, width).
+
+    Colorscale is diverging violet→navy→cyan about the ratio = 1 boundary:
+    navy = bound, cyan wall = punch-through. A dotted contour is drawn at
+    ratio = 1 (the actual boundary the missions hunt).
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(
+        z=ratio, x=widths, y=amplitudes,
+        colorscale=P.DIVERGING_SCALE,
+        zmid=1.0,
+        colorbar=dict(title=dict(text="escape ratio", side="right")),
+        hovertemplate="A: %{y:.2f} m<br>σ: %{x:.2f} m<br>ratio: %{z:.2f}<extra></extra>",
+    ))
+    fig.add_trace(go.Contour(
+        z=ratio, x=widths, y=amplitudes,
+        showscale=False,
+        contours=dict(start=1.0, end=1.0, coloring="none"),
+        line=dict(color=P.ACCENT.AMBER, width=2, dash="dot"),
+        hoverinfo="skip",
+    ))
+    fig.update_layout(
+        template=P.TEMPLATE,
+        title=dict(text=title, x=0.01, xanchor="left"),
+        xaxis_title="Gaussian width σ (m)",
+        yaxis_title="Amplitude A (m)",
+        height=560,
+    )
+    return fig
+
+
+def create_stability_landscape(drift, dt_fracs, dxs,
+                               title="Stability landscape — darker is healthier (log drift)"):
+    """Themed heatmap of final mean-square drift over (dt fraction, dx).
+
+    Values are log10-scaled; the sequential wave scale keeps the healthy
+    (tiny drift) cells dark and the detonated cells bright cyan. A dotted
+    amber contour marks the CFL = 1 line (dt_frac = 1 for every dx).
+    """
+    log_drift = np.log10(np.maximum(drift, 1e-300))
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(
+        z=log_drift, x=dxs, y=dt_fracs,
+        colorscale=P.WAVE_SCALE,
+        colorbar=dict(title=dict(text="log₁₀ drift", side="right")),
+        hovertemplate="dt/CFL: %{y:.2f}<br>dx: %{x:.2f} m<br>log drift: %{z:.1f}<extra></extra>",
+    ))
+    fig.update_layout(
+        template=P.TEMPLATE,
+        title=dict(text=title, x=0.01, xanchor="left"),
+        xaxis_title="Grid spacing dx (m)",
+        yaxis_title="dt as fraction of CFL limit",
+        height=560,
+    )
+    return fig
+
+
 def create_dashboard_layout(x: np.ndarray,
                             u_history: List[np.ndarray],
                             time_points: np.ndarray,

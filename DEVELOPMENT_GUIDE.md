@@ -605,4 +605,4 @@ This project now has a solid foundation for interactive mathematical visualizati
 
 ---
 
-*Happy Simulating!* 🌊✨
+*Happy Simulating!*

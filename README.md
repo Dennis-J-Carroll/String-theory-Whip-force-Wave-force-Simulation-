@@ -8,7 +8,7 @@
 ![Wave Simulation](docs/wave_animation.gif)
 *Note: Run simulation to generate visualization*
 
-## 🌊 Why This Exists
+## Why This Exists
 
 > **"The laws of physics provide principled frameworks for understanding computation."**
 
@@ -35,7 +35,7 @@ This project implements a comprehensive numerical simulation of **classical wave
 - **Modified wave equations** with Lennard-Jones-like potentials for wave interactions
 - **Energy conservation** in non-linear wave systems
 
-### ⚡ Important Clarification: Classical vs. Quantum
+### Important Clarification: Classical vs. Quantum
 
 **This is NOT quantum string theory** (the fundamental physics theory proposing 1-dimensional strings as basic constituents of matter). This simulation models **classical continuous strings** (like ropes, cables, or whips) governed by Newtonian mechanics and the classical wave equation.
 
@@ -44,16 +44,17 @@ This project implements a comprehensive numerical simulation of **classical wave
 ## Features
 
 ### Physics Engine
-- ✅ Multiple numerical integrators: Central Difference, RK4, Velocity Verlet
-- ✅ Vectorized NumPy implementation for performance
-- ✅ Lennard-Jones-like potential for modeling wave interactions
-- ✅ Linear density tapering for whip simulations
-- ✅ CFL stability condition checking
-- ✅ Real-time energy conservation monitoring
+- Multiple numerical integrators: Central Difference, RK4, Velocity Verlet
+- Vectorized NumPy implementation for performance
+- Lennard-Jones-like potential for modeling wave interactions
+- Linear density tapering for whip simulations
+- CFL stability condition checking
+- Real-time energy conservation monitoring
 
 ### Visualization & Analysis — DJC Design System
 - **Themed plots**: deep-navy canvas with teal/cyan glow lines, glass legends, and Orbitron headings — the same aesthetic as [dennisjcarroll.com](https://dennisjcarroll.com)
 - **Type stack matches the site**: Orbitron (display) · Space Grotesk (body) · Fira Code (mono) — loaded from Google Fonts in the dashboard and HTML report, bundled as matplotlib fonts for the static plots
+- **No emoji, ever**: all UI iconography is inline SVG from `djc_icons.py` (pluck, draw, check, cross, warn, diamond, play, pause — palette-matched); typographic marks like ✓, → and ↔ stay. Enforced by `tests/test_no_emoji.py`
 - **Equation footnotes**: every chart carries its governing equation (`∂²u/∂t² = c²∂²u/∂x² + F(u)`, `c = √(T/μ)`, the LJ force) with the actual constants substituted in, plus a green/red **CFL badge** (`c·dt/dx` vs the stability limit) — see `djc_theme.equation_footnote` / `cfl_badge`
 - **Signature colormaps**: `djc_wave` (teal → electric cyan), `djc_diverging` (violet / navy / cyan) and `djc_time` (slate past → glowing present) for wave evolution overlays
 - Wave evolution plots with customizable time steps
@@ -294,7 +295,6 @@ python main.py --config config.yaml
 ```
 
 ### The Dash Dashboard (real-time web UI)
-
 ```bash
 python dashboard_app.py        # → http://localhost:8050
 ```
@@ -304,6 +304,19 @@ u* = 2 m), wave speed, CFL fraction, grid and pulse shape — with a green/red
 CFL badge, a themed animated wave, 3D surface, energy monitor, phase space and
 the potential/force curves. Requires the Plotly extras:
 `pip install dash dash-bootstrap-components plotly` (also in requirements.txt).
+
+**Pointer physics** — the Wave tab is directly touchable: *click anywhere on
+the string to pluck it there* (the clicked height sets the amplitude, signed —
+pluck below the floor for an inverted pulse) and watch it evolve through the
+same CFL-guarded, energy-conserved solver path as RUN. A draw toggle lets
+you sketch a shape by dragging a box on the chart, then RUN to release it.
+
+**Landscapes tab** — sweep, don't sample. The escape landscape maps the
+exact escape-ratio analytics over an (amplitude × width) grid with the
+ratio-1 punch-through boundary drawn as a dotted contour; the stability
+landscape runs a coarse grid of real short sims across (dt × dx) and shows
+the Courant detonation lit up in place. `regimes.py` computes both; every
+cell agrees with the dashboard's live readout by construction.
 
 To regenerate the static interactive artifacts instead:
 
@@ -387,7 +400,7 @@ While this is primarily a classical simulation, the Lennard-Jones potential was 
 
 ---
 
-## 🤖 Connections to Machine Learning Research
+## Connections to Machine Learning Research
 
 This simulation directly informs my approach to neural architecture design. Here are the key bridges:
 
@@ -457,7 +470,7 @@ This simulation directly informs my approach to neural architecture design. Here
 
 ---
 
-## 🎓 What I Learned
+## What I Learned
 
 ### Physics Insights
 - Wave-particle duality in computational contexts (discrete vs continuous)

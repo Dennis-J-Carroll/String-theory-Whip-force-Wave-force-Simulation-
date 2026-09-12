@@ -70,10 +70,13 @@ def well_properties(k1=None, k2=None):
                        just reach the V = 0 crossing.
         turning_point: u_out = (k1/k2)^(1/6), where V = 0 on the wall side.
     """
+    # Default to the calibrated wave-scale constants — the legacy
+    # ``const.K1`` fallback was cosmological and reported a well ~1e59
+    # deep, useless next to any wave-scale readout.
     if k1 is None:
-        k1 = const.K1
+        k1 = WAVE_SCALE_K1
     if k2 is None:
-        k2 = const.K2
+        k2 = WAVE_SCALE_K2
     if k1 <= 0 or k2 <= 0:
         raise ValueError("k1 and k2 must be positive")
 
@@ -104,8 +107,11 @@ def crest_energy(amplitude, width, c=1.0, k1=None, k2=None):
     """
     props = well_properties(k1, k2)
     u_star = props["u_star"]
-    k1 = const.K1 if k1 is None else k1
-    k2 = const.K2 if k2 is None else k2
+    # Default to the calibrated wave-scale constants, matching every other
+    # helper here — the legacy ``const.K1`` fallback was cosmological and
+    # produced V-differences ~1e59 against the wave-scale depth.
+    k1 = WAVE_SCALE_K1 if k1 is None else k1
+    k2 = WAVE_SCALE_K2 if k2 is None else k2
 
     v_floor = potential_function(u_star, k1, k2)
     well = float(potential_function(u_star + amplitude, k1, k2) - v_floor)
